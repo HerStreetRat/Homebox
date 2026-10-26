@@ -133,6 +133,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
 .datafoot { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; color: var(--muted); font-size: 13px }
 .datafoot .actions { gap: 6px }
 @media (max-width: 420px) { nav.tabs button { padding: 10px 7px; font-size: 15px } }
+@media (max-width: 480px) { header.top .actions { display: grid; grid-template-columns: auto auto auto; width: 100% } header.top .actions .btn { padding: 8px 10px; font-size: 14px } }
 </style>
 </head>
 <body>
@@ -144,8 +145,9 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
       <p>Equipment, tools and parts around the house, and the upkeep they need.</p>
     </div>
     <div class="actions">
-      <button class="btn" data-act="new-task" id="btn-new-task">Add maintenance</button>
+      <button class="btn primary" data-act="new-task" id="btn-new-task">Add maintenance</button>
       <button class="btn primary" data-act="new-item" id="btn-new-item">Add item</button>
+      <button class="btn primary" data-act="new-part" id="btn-new-part">Add part</button>
     </div>
   </header>
 
@@ -177,7 +179,6 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
     <div class="toolbar">
       <input id="pq" type="search" placeholder="Search name, size, part number, where it's kept…" aria-label="Search parts and supplies">
       <select id="f-pcat" aria-label="Filter by category"><option value="">All categories</option></select>
-      <button class="btn primary" data-act="new-part" id="btn-new-part">Add part</button>
     </div>
     <div id="parts-list"></div>
   </section>
