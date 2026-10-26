@@ -68,8 +68,8 @@ a.btn { color: var(--ink); text-decoration: none; display: inline-block }
 @media (max-width: 560px) { .strip { grid-template-columns: repeat(2, minmax(0, 1fr)) }
   .strip > div:nth-child(3) { border-left: 0 } .strip > div:nth-child(n+3) { border-top: 1px solid var(--line) } }
 
-nav.tabs { display: flex; gap: 4px; margin: 28px 0 0; border-bottom: 1px solid var(--line) }
-nav.tabs button { border: 0; background: none; padding: 10px 14px; cursor: pointer; font-family: var(--display); font-weight: 700; font-stretch: 85%; font-size: 16px; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px }
+nav.tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 28px 0 0; border-bottom: 1px solid var(--line) }
+nav.tabs button { white-space: nowrap; flex: none; border: 0; background: none; padding: 10px 14px; cursor: pointer; font-family: var(--display); font-weight: 700; font-stretch: 85%; font-size: 16px; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px }
 nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent) }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 }
@@ -91,6 +91,11 @@ nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: 
 
 .due { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums }
 .over .due, .txt-over { color: var(--over) } .soon .due, .txt-soon { color: var(--soon) }
+.log { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden }
+.log .entry { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 10px 12px; border-top: 1px solid var(--line) }
+.log .entry:first-child { border-top: 0 }
+.log .entry .what { overflow-wrap: anywhere } .log .entry .sm { color: var(--muted); font-size: 13px }
+@media (max-width: 480px) { .log .entry { grid-template-columns: minmax(0, 1fr) auto } .log .entry .due { grid-column: 1 / -1 } }
 .chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 3px; background: var(--tag); color: var(--tag-ink); font-weight: 500 }
 .pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; font-weight: 500; white-space: nowrap }
 .pill.over { color: var(--over) } .pill.soon { color: var(--soon) } .pill.ok { color: var(--ok) } .pill.none { color: var(--muted) }
@@ -127,6 +132,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
 @media (prefers-reduced-motion: no-preference) { .toast { animation: rise .2s ease-out } @keyframes rise { from { transform: translate(-50%, 8px); opacity: 0 } } }
 .datafoot { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; color: var(--muted); font-size: 13px }
 .datafoot .actions { gap: 6px }
+@media (max-width: 420px) { nav.tabs button { padding: 10px 7px; font-size: 15px } }
 </style>
 </head>
 <body>
@@ -155,6 +161,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
   <nav class="tabs" role="tablist">
     <button role="tab" id="tab-upcoming" data-view="upcoming" aria-selected="true">Maintenance</button>
     <button role="tab" id="tab-items" data-view="items" aria-selected="false">Equipment</button>
+    <button role="tab" id="tab-parts" data-view="parts" aria-selected="false">Parts &amp; supplies</button>
   </nav>
 
   <section id="view-upcoming"></section>
@@ -166,6 +173,14 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
     </div>
     <div id="items-list"></div>
   </section>
+  <section id="view-parts" hidden>
+    <div class="toolbar">
+      <input id="pq" type="search" placeholder="Search name, size, part number, where it's kept…" aria-label="Search parts and supplies">
+      <select id="f-pcat" aria-label="Filter by category"><option value="">All categories</option></select>
+      <button class="btn primary" data-act="new-part" id="btn-new-part">Add part</button>
+    </div>
+    <div id="parts-list"></div>
+  </section>
 
   <footer class="datafoot" id="datafoot"></footer>
   <input type="file" id="restore-file" accept=".json,application/json" hidden>
@@ -175,15 +190,20 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
 <datalist id="dl-types"></datalist>
 <datalist id="dl-locs"></datalist>
 <datalist id="dl-tasks"></datalist>
+<datalist id="dl-pcats"></datalist>
+<datalist id="dl-units"></datalist>
 
 <script>
 const DEFAULT_TYPES = ["Appliance", "HVAC", "Plumbing", "Electrical", "Power tool", "Hand tool", "Yard & garden", "Vehicle", "Electronics", "Part / supply"];
 const DEFAULT_LOCS = ["Basement", "Garage", "Kitchen", "Laundry room", "Utility closet", "Attic", "Shed", "Yard"];
+const PART_CATS = ["Plumbing", "Electrical", "HVAC", "Fasteners", "Appliance parts", "Lighting", "Paint & finish", "Lumber & building", "Yard & garden", "Other"];
+const PART_UNITS = ["pcs", "ft", "box", "pack", "roll", "gal", "lb"];
+const LIFESPAN_HINT = "Typical: water heater 8–12, furnace 15–20, central AC 10–15, washer or dryer 10–13, fridge 10–15, dishwasher 9–12, roof 20–30.";
 const TASK_IDEAS = ["Replace furnace filter", "Oil blower motor", "Winterize", "Clean dryer vent", "Flush water heater", "Test smoke & CO detectors", "Service lawn mower", "Clean gutters", "Replace fridge water filter", "Sharpen blades"];
 const UNITS = { days: "day", weeks: "week", months: "month", years: "year" };
 const RRULE = { days: "DAILY", weeks: "WEEKLY", months: "MONTHLY", years: "YEARLY" };
 
-const S = { items: [], tasks: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
+const S = { items: [], tasks: [], parts: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -223,6 +243,18 @@ function warranty(it) {
   if (n <= 90) return { cls: "soon", text: `Warranty ends in ${n} day${n === 1 ? "" : "s"}` };
   return { cls: "ok", text: `Warranty to ${parse(it.warrantyEnd).toLocaleDateString(undefined, { month: "short", year: "numeric" })}` };
 }
+function lifespan(it) {
+  const start = it.installDate || it.purchaseDate, yrs = Number(it.lifespan);
+  if (!start || !yrs) return null;
+  const age = (parse(today()) - parse(start)) / (365.25 * 86400000), left = yrs - age, whole = Math.floor(age);
+  const ageText = age < 1 ? "Under 1 yr old" : `${whole} yr${whole === 1 ? "" : "s"} old`;
+  if (left <= 0) return { cls: "over", text: "Past expected life", ageText, yrs };
+  const l = Math.max(1, Math.round(left));
+  if (age >= yrs * 0.8 || left <= 2) return { cls: "soon", text: `Near end of life (~${l} yr${l === 1 ? "" : "s"} left)`, ageText, yrs };
+  return { cls: "ok", text: `~${l} yrs of life left`, ageText, yrs };
+}
+const safeUrl = (u) => /^https?:\/\//i.test(u || "") ? u : "";
+const linkText = (u) => u.replace(/^https?:\/\/(www\.)?/i, "").slice(0, 60);
 const itemName = (it) => [it.brand, it.product].filter(Boolean).join(" ") || "Untitled item";
 const itemById = (id) => S.items.find((i) => i.id === id);
 
@@ -237,7 +269,7 @@ function render() {
   $("s-soon").textContent = ready ? soon : "–";
   $("s-warr").textContent = ready ? warr : "–";
 
-  const examples = S.items.some((i) => i.example) || S.tasks.some((t) => t.example);
+  const examples = S.items.some((i) => i.example) || S.tasks.some((t) => t.example) || S.parts.some((x) => x.example);
   const real = S.items.filter((i) => !i.example).length + S.tasks.filter((t) => !t.example).length;
   const m = meta(), last = m.lastBackup, mode = m.fileMode || "";
   const stale = !mode && real >= 3 && (!last || daysUntil(last) < -30);
@@ -254,6 +286,7 @@ function render() {
   fillLists();
   renderUpcoming(ready);
   renderItems(ready);
+  renderParts(ready);
 }
 
 function fillLists() {
@@ -262,6 +295,11 @@ function fillLists() {
   $("dl-types").innerHTML = types.map((t) => `<option value="${esc(t)}">`).join("");
   $("dl-locs").innerHTML = locs.map((t) => `<option value="${esc(t)}">`).join("");
   $("dl-tasks").innerHTML = TASK_IDEAS.map((t) => `<option value="${esc(t)}">`).join("");
+  const pcats = [...new Set([...S.parts.map((x) => x.category).filter(Boolean), ...PART_CATS])];
+  $("dl-pcats").innerHTML = pcats.map((t) => `<option value="${esc(t)}">`).join("");
+  $("dl-units").innerHTML = PART_UNITS.map((t) => `<option value="${esc(t)}">`).join("");
+  const usedCats = [...new Set(S.parts.map((x) => x.category).filter(Boolean))].sort();
+  { const sel = $("f-pcat"), cur = sel.value; sel.innerHTML = `<option value="">All categories</option>` + usedCats.map((v) => `<option${v === cur ? " selected" : ""}>${esc(v)}</option>`).join(""); }
   const usedTypes = [...new Set(S.items.map((i) => i.type).filter(Boolean))].sort();
   const usedLocs = [...new Set(S.items.map((i) => i.location).filter(Boolean))].sort();
   for (const [sel, vals, all] of [[$("f-type"), usedTypes, "All types"], [$("f-loc"), usedLocs, "All locations"]]) {
@@ -319,11 +357,11 @@ function renderItems(ready) {
   const q = $("q").value.trim().toLowerCase(), ft = $("f-type").value, fl = $("f-loc").value;
   const list = S.items
     .filter((i) => (!ft || i.type === ft) && (!fl || i.location === fl))
-    .filter((i) => !q || [i.brand, i.product, i.type, i.location, i.model, i.serial, i.specs, i.parts, i.store, i.service, i.notes].join(" ").toLowerCase().includes(q))
+    .filter((i) => !q || [i.brand, i.product, i.type, i.location, i.model, i.serial, i.specs, i.parts, i.store, i.service, i.receipt, i.notes, ...(i.log || []).map((x) => x.what + " " + (x.by || ""))].join(" ").toLowerCase().includes(q))
     .sort((a, b) => itemName(a).localeCompare(itemName(b)));
   if (!list.length) { el.innerHTML = `<div class="empty">No items match that search.</div>`; return; }
   el.innerHTML = `<div class="list">${list.map((i) => {
-    const w = warranty(i);
+    const w = warranty(i), life = lifespan(i);
     const tasks = S.tasks.filter((t) => t.itemId === i.id);
     const next = tasks.sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
     return `<div class="row clickable ${next ? dueClass(next.nextDue) : ""}" data-act="open-item" data-id="${i.id}" tabindex="0" role="button">
@@ -337,7 +375,40 @@ function renderItems(ready) {
           ${next ? `<span class="${dueClass(next.nextDue) === "ok" ? "" : "txt-" + dueClass(next.nextDue)}">${esc(next.title)}: ${esc(rel(next.nextDue))}</span>` : ""}
         </div>
       </div>
-      <div class="side"><span class="pill ${w.cls}">${esc(w.text)}</span></div>
+      <div class="side">${life && life.cls !== "ok" ? `<span class="pill ${life.cls}">${esc(life.text)}</span>` : ""}<span class="pill ${w.cls}">${esc(w.text)}</span></div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function renderParts(ready) {
+  const el = $("parts-list");
+  if (!ready) { el.innerHTML = ""; return; }
+  if (!S.parts.length) {
+    el.innerHTML = `<div class="empty"><strong>No parts or supplies yet</strong>Keep track of spare fittings, pipe, wire, fasteners and other parts: what size they are, how many you have, and where they're kept.<br><br><button class="btn primary" data-act="new-part" id="btn-empty-part">Add part</button></div>`;
+    return;
+  }
+  const q = $("pq").value.trim().toLowerCase(), fc = $("f-pcat").value;
+  const list = S.parts
+    .filter((x) => !fc || x.category === fc)
+    .filter((x) => !q || [x.name, x.size, x.category, x.stored, x.partNo, x.source, x.notes, itemById(x.itemId) ? itemName(itemById(x.itemId)) : ""].join(" ").toLowerCase().includes(q))
+    .sort((a, b) => (!a.category - !b.category) || (a.category || "").localeCompare(b.category || "") || (a.name || "").localeCompare(b.name || ""));
+  if (!list.length) { el.innerHTML = `<div class="empty">No parts match that search.</div>`; return; }
+  el.innerHTML = `<div class="list">${list.map((x) => {
+    const it = itemById(x.itemId);
+    const qty = x.qty !== "" && x.qty != null ? `${x.qty} ${x.unit || ""}`.trim() : "";
+    return `<div class="row clickable" data-act="edit-part" data-id="${x.id}" tabindex="0" role="button">
+      <span class="stripe"></span>
+      <div class="main">
+        <div class="title">${esc(x.name || "Untitled part")}${x.example ? '<span class="ex">Example</span>' : ""}</div>
+        <div class="meta">
+          ${x.category ? `<span class="chip">${esc(x.category)}</span>` : ""}
+          ${x.size ? `<span>${esc(x.size)}</span>` : ""}
+          ${x.stored ? `<span>Kept in ${esc(x.stored)}</span>` : ""}
+          ${x.partNo ? `<span class="mono">${esc(x.partNo)}</span>` : ""}
+          ${it ? `<span>For ${esc(itemName(it))}</span>` : ""}
+        </div>
+      </div>
+      <div class="side">${qty ? `<span class="pill none" style="color:var(--ink)">On hand: ${esc(qty)}</span>` : ""}</div>
     </div>`;
   }).join("")}</div>`;
 }
@@ -371,7 +442,13 @@ function itemForm(it = {}) {
       <label class="f">Purchase date<input id="i-purchase" name="purchaseDate" type="date" value="${esc(it.purchaseDate)}"></label>
       <label class="f">Warranty ends<input id="i-warranty" name="warrantyEnd" type="date" value="${esc(it.warrantyEnd)}">
         <span class="quick"><span class="hint">From purchase:</span>${[1, 2, 5, 10].map((y) => `<button type="button" class="btn small" data-act="warr" data-y="${y}">${y} yr</button>`).join("")}</span></label>
-      <label class="f full">Warranty details<input id="i-wdetails" name="warrantyNotes" value="${esc(it.warrantyNotes)}" placeholder="Parts 10 yr, labor 1 yr. Registered online."></label>
+      <label class="f full">Warranty details<input id="i-wdetails" name="warrantyNotes" value="${esc(it.warrantyNotes)}" placeholder="Parts 10 yr, labor 1 yr"></label>
+      <label class="f">Warranty registered?<select id="i-registered" name="registered">${[["", "Not sure"], ["yes", "Yes"], ["no", "No"]].map(([v, l]) => `<option value="${v}"${(it.registered || "") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label class="f">Where's the receipt?<input id="i-receipt" name="receipt" value="${esc(it.receipt)}" placeholder="Email from Home Depot, file box"></label>
+      <label class="f full">Warranty or registration link<input id="i-wlink" name="warrantyUrl" type="url" value="${esc(it.warrantyUrl)}" placeholder="https://… (manufacturer's warranty or product registration page)"></label>
+      <label class="f">Install date<input id="i-install" name="installDate" type="date" value="${esc(it.installDate)}"><span class="hint">If different from the purchase date</span></label>
+      <label class="f">Expected lifespan (years)<input id="i-life" name="lifespan" type="number" min="1" max="100" inputmode="numeric" value="${esc(it.lifespan)}" placeholder="12"></label>
+      <p class="hint full" style="margin:0">${esc(LIFESPAN_HINT)}</p>
       <label class="f full">Size &amp; specs<textarea id="i-specs" name="specs" placeholder="30&quot; W x 48&quot; H. 80,000 BTU, 120V / 15A. Filter slot 16x25x1.">${esc(it.specs)}</textarea></label>
       <label class="f full">Replacement parts &amp; supplies<input id="i-parts" name="parts" value="${esc(it.parts)}" placeholder="Filter 16x25x1 MERV 8, belt A-38, bulb E26 LED"></label>
       <label class="f">Price paid<input id="i-price" name="price" inputmode="decimal" value="${esc(it.price)}" placeholder="$1,850"></label>
@@ -407,24 +484,79 @@ function taskForm(t = {}, presetItem = "") {
 
 function itemSheet(id) {
   const it = itemById(id); if (!it) return closeSheet();
-  const w = warranty(it);
+  const w = warranty(it), life = lifespan(it);
   const tasks = S.tasks.filter((t) => t.itemId === id).sort((a, b) => a.nextDue.localeCompare(b.nextDue));
+  const log = [...(it.log || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const parts = S.parts.filter((x) => x.itemId === id);
   const fact = (k, v, cls = "") => v ? `<dt>${k}</dt><dd class="${cls}">${esc(v)}</dd>` : "";
   openSheet(`<div data-item="${id}">
     <h2>${esc(itemName(it))}${it.example ? '<span class="ex">Example</span>' : ""}</h2>
     <dl class="facts">
       ${fact("Type", it.type)}${fact("Location", it.location)}${fact("Model", it.model, "mono")}${fact("Serial", it.serial, "mono")}
       ${fact("Purchased", [nice(it.purchaseDate), it.price, it.store].filter(Boolean).join(" · "))}
+      ${fact("Installed", it.installDate && it.installDate !== it.purchaseDate ? nice(it.installDate) : "")}
+      ${life ? `<dt>Age</dt><dd>${esc(life.ageText)} of ~${esc(life.yrs)} expected <span class="pill ${life.cls}">${esc(life.text)}</span></dd>` : ""}
       ${fact("Size & specs", it.specs, "pre")}${fact("Parts", it.parts)}${fact("Service", it.service)}
       ${/^https?:\/\//i.test(it.manualUrl || "") ? `<dt>Manual</dt><dd><a href="${esc(it.manualUrl)}" target="_blank" rel="noopener">${esc(it.manualUrl.replace(/^https?:\/\/(www\.)?/i, "").slice(0, 60))}</a></dd>` : ""}
-      <dt>Warranty</dt><dd><span class="pill ${w.cls}">${esc(w.text)}</span>${it.warrantyEnd ? ` <span class="hint">${esc(nice(it.warrantyEnd))}</span>` : ""}${it.warrantyNotes ? `<br>${esc(it.warrantyNotes)}` : ""}</dd>
+      <dt>Warranty</dt><dd><span class="pill ${w.cls}">${esc(w.text)}</span>${it.warrantyEnd ? ` <span class="hint">${esc(nice(it.warrantyEnd))}</span>` : ""}${it.registered === "yes" ? "<br>Registered" : it.registered === "no" ? `<br><span class="txt-soon">Not registered yet</span>` : ""}${it.warrantyNotes ? `<br>${esc(it.warrantyNotes)}` : ""}${safeUrl(it.warrantyUrl) ? `<br><a href="${esc(it.warrantyUrl)}" target="_blank" rel="noopener">${esc(linkText(it.warrantyUrl))}</a>` : ""}</dd>
+      ${fact("Receipt", it.receipt)}
       ${fact("Notes", it.notes)}
     </dl>
     <div class="sub"><span>Maintenance</span><button class="btn small" data-act="new-task" data-item="${id}">Add</button></div>
     ${tasks.length ? `<div class="list">${tasks.map((t) => taskRow(t, false)).join("")}</div>` : `<div class="empty" style="padding:16px">No maintenance set for this item.</div>`}
+    <div class="sub"><span>Repair &amp; service log</span><button class="btn small" data-act="new-log" data-item="${id}">Add entry</button></div>
+    ${log.length ? `<div class="log">${log.map((x) => `<div class="entry">
+        <span class="due">${esc(nice(x.date))}</span>
+        <span><span class="what">${esc(x.what)}</span>${x.cost || x.by ? `<br><span class="sm">${esc([x.cost, x.by].filter(Boolean).join(" · "))}</span>` : ""}</span>
+        <button class="btn small" data-act="edit-log" data-log="${esc(x.id)}">Edit</button></div>`).join("")}</div>`
+      : `<div class="empty" style="padding:16px">No repairs or service logged yet. Marking a maintenance task done adds an entry here automatically.</div>`}
+    ${parts.length ? `<div class="sub"><span>Spare parts on hand</span></div><div class="log">${parts.map((x) => `<div class="entry"><span class="due">${esc([x.qty, x.unit].filter((v) => v !== "" && v != null).join(" ") || "–")}</span><span class="what">${esc(x.name)}${x.stored ? `<br><span class="sm">Kept in ${esc(x.stored)}</span>` : ""}</span><button class="btn small" data-act="edit-part" data-id="${x.id}" data-back="${id}">Edit</button></div>`).join("")}</div>` : ""}
     <footer><button type="button" class="btn danger" data-act="del-item" data-id="${id}">Delete item</button>
       <div class="r"><button class="btn" data-act="close">Close</button><button class="btn primary" data-act="edit-item" data-id="${id}">Edit</button></div></footer>
   </div>`);
+}
+
+function logForm(itemId, entry = {}) {
+  sheet.dataset.back = itemId;
+  openSheet(`<form id="log-form" data-item="${esc(itemId)}" data-log="${esc(entry.id || "")}">
+    <h2>${entry.id ? "Edit log entry" : "Add log entry"}</h2>
+    <div class="fields">
+      <label class="f">Date<input id="l-date" name="date" type="date" value="${esc(entry.date || today())}" required></label>
+      <label class="f">Cost<input id="l-cost" name="cost" value="${esc(entry.cost)}" placeholder="$180"></label>
+      <label class="f full">What was done<input id="l-what" name="what" value="${esc(entry.what)}" placeholder="Replaced igniter" required></label>
+      <label class="f full">Done by<input id="l-by" name="by" value="${esc(entry.by)}" placeholder="Me, or ABC Heating"></label>
+    </div>
+    <div class="err" id="form-err" hidden></div>
+    <footer>${entry.id ? `<button type="button" class="btn danger" data-act="del-log">Delete</button>` : ""}
+      <div class="r"><button type="button" class="btn" data-act="back-item">Cancel</button><button class="btn primary" type="submit">Save</button></div></footer>
+  </form>`);
+}
+
+function partForm(x = {}, back = "") {
+  sheet.dataset.back = back;
+  const opts = [...S.items].sort((a, b) => itemName(a).localeCompare(itemName(b)))
+    .map((i) => `<option value="${i.id}"${i.id === x.itemId ? " selected" : ""}>${esc(itemName(i))}</option>`).join("");
+  openSheet(`<form id="part-form" data-id="${esc(x.id || "")}">
+    <h2>${x.id ? "Edit part" : "Add part or supply"}</h2>
+    <div class="fields">
+      <label class="f full">Name<input id="p-name" name="name" value="${esc(x.name)}" placeholder="PEX elbow" required></label>
+      <label class="f">Category<input id="p-cat" name="category" list="dl-pcats" value="${esc(x.category)}" placeholder="Plumbing"></label>
+      <label class="f">Size &amp; spec<input id="p-size" name="size" value="${esc(x.size)}" placeholder="1/2&quot; crimp, brass"></label>
+      <label class="f">Quantity on hand<input id="p-qty" name="qty" type="number" min="0" step="any" inputmode="decimal" value="${esc(x.qty)}" placeholder="6"></label>
+      <label class="f">Unit<input id="p-unit" name="unit" list="dl-units" value="${esc(x.unit)}" placeholder="pcs"></label>
+      <label class="f">Where it's kept<input id="p-stored" name="stored" list="dl-locs" value="${esc(x.stored)}" placeholder="Garage, bin 3"></label>
+      <label class="f">Brand &amp; part number<input id="p-partno" name="partNo" value="${esc(x.partNo)}" placeholder="SharkBite UC250LF"></label>
+      <label class="f">Where to buy<input id="p-source" name="source" value="${esc(x.source)}" placeholder="Menards, aisle 12"></label>
+      <label class="f">Price<input id="p-price" name="price" value="${esc(x.price)}" placeholder="$2.48 each"></label>
+      <label class="f full">Product link<input id="p-url" name="url" type="url" value="${esc(x.url)}" placeholder="https://…"></label>
+      <label class="f full">Used for<select id="p-item" name="itemId"><option value="">General, not tied to one item</option>${opts}</select></label>
+      <label class="f full">Notes<textarea id="p-notes" name="notes" placeholder="Fits the kitchen sink supply lines">${esc(x.notes)}</textarea></label>
+    </div>
+    ${safeUrl(x.url) ? `<p style="margin:10px 0 0"><a href="${esc(x.url)}" target="_blank" rel="noopener">Open product link</a></p>` : ""}
+    <div class="err" id="form-err" hidden></div>
+    <footer>${x.id ? `<button type="button" class="btn danger" data-act="del-part" data-id="${x.id}">Delete</button>` : ""}
+      <div class="r"><button type="button" class="btn" data-act="${back ? "back-item" : "close"}">Cancel</button><button class="btn primary" type="submit">Save</button></div></footer>
+  </form>`);
 }
 
 /* ---------- writes ---------- */
@@ -447,9 +579,23 @@ document.addEventListener("submit", async (e) => {
     const d = formData(f);
     const ref = id ? S.db.doc("items/" + id) : S.db.collection("items").doc();
     const prev = id ? itemById(id) : null;
-    const body = { ...d, createdAt: prev?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
-    if (prev?.example) body.example = true;
+    const body = { ...(prev || {}), ...d, createdAt: prev?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
+    delete body.id;
     if (await write(() => ref.set(body), id ? "Item updated" : "Item added")) itemSheet(ref.id);
+  }
+  if (f.id === "log-form") {
+    const d = formData(f), itemId = f.dataset.item, it = itemById(itemId); if (!it) return closeSheet();
+    const lid = f.dataset.log || newId();
+    const log = (it.log || []).filter((x) => x.id !== lid).concat({ id: lid, date: d.date, what: d.what, cost: d.cost, by: d.by });
+    if (await write(() => S.db.doc("items/" + itemId).update({ log }), f.dataset.log ? "Entry updated" : "Entry added")) itemSheet(itemId);
+  }
+  if (f.id === "part-form") {
+    const d = formData(f), prev = id ? S.parts.find((x) => x.id === id) : null;
+    const body = { ...(prev || {}), ...d, updatedAt: new Date().toISOString() };
+    delete body.id;
+    const ref = id ? S.db.doc("parts/" + id) : S.db.collection("parts").doc();
+    const back = sheet.dataset.back;
+    if (await write(() => ref.set(body), id ? "Part updated" : "Part added")) { if (back) itemSheet(back); else closeSheet(); }
   }
   if (f.id === "task-form") {
     const d = formData(f);
@@ -474,10 +620,10 @@ function arm(btn, label) {
 
 document.addEventListener("click", async (e) => {
   const tab = e.target.closest("[data-view]");
-  if (tab) { S.view = tab.dataset.view; for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-selected", b === tab); $("view-upcoming").hidden = S.view !== "upcoming"; $("view-items").hidden = S.view !== "items"; return; }
+  if (tab) { S.view = tab.dataset.view; for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-selected", b === tab); for (const v of ["upcoming", "items", "parts"]) $("view-" + v).hidden = S.view !== v; return; }
   const el = e.target.closest("[data-act]"); if (!el) return;
   const act = el.dataset.act, id = el.dataset.id;
-  if (act !== "del-item" && act !== "del-task" && armed) { armed.classList.remove("armed"); armed.textContent = armed.dataset.label; armed = null; }
+  if (!["del-item", "del-task", "del-log", "del-part"].includes(act) && armed) { armed.classList.remove("armed"); armed.textContent = armed.dataset.label; armed = null; }
   const inItem = el.closest("[data-item]")?.dataset.item;
   switch (act) {
     case "close": return closeSheet();
@@ -486,6 +632,25 @@ document.addEventListener("click", async (e) => {
     case "open-item": sheet.dataset.back = ""; return itemSheet(id);
     case "new-task": sheet.dataset.back = el.dataset.item || ""; return taskForm({}, el.dataset.item || "");
     case "edit-task": { const back = inItem || ""; const t = S.tasks.find((x) => x.id === id); sheet.dataset.back = back; return t && taskForm(t); }
+    case "new-log": return logForm(el.dataset.item);
+    case "edit-log": { const it = itemById(inItem); const x = it && (it.log || []).find((l) => l.id === el.dataset.log); return x && logForm(inItem, x); }
+    case "back-item": return sheet.dataset.back ? itemSheet(sheet.dataset.back) : closeSheet();
+    case "del-log": {
+      if (!arm(el, "Tap again to delete")) return;
+      armed = null;
+      const f = $("log-form"), itemId = f.dataset.item, it = itemById(itemId);
+      if (it && await write(() => S.db.doc("items/" + itemId).update({ log: (it.log || []).filter((x) => x.id !== f.dataset.log) }), "Entry deleted")) itemSheet(itemId);
+      return;
+    }
+    case "new-part": return partForm({});
+    case "edit-part": { const x = S.parts.find((p) => p.id === id); return x && partForm(x, el.dataset.back || ""); }
+    case "del-part": {
+      if (!arm(el, "Tap again to delete")) return;
+      armed = null;
+      const back = sheet.dataset.back;
+      if (await write(() => S.db.doc("parts/" + id).delete(), "Part deleted")) { if (back) itemSheet(back); else closeSheet(); }
+      return;
+    }
     case "warr": {
       const p = $("i-purchase").value || today();
       $("i-warranty").value = addInterval(p, el.dataset.y, "years");
@@ -496,7 +661,11 @@ document.addEventListener("click", async (e) => {
       const t = S.tasks.find((x) => x.id === id); if (!t || !S.db) return;
       const d = today(), next = addInterval(d, t.every, t.unit);
       const history = [d, ...(t.history || [])].slice(0, 24);
-      await write(() => S.db.doc("tasks/" + id).update({ lastDone: d, nextDue: next, history }), `Logged. Next due ${nice(next)}`);
+      await write(async () => {
+        await S.db.doc("tasks/" + id).update({ lastDone: d, nextDue: next, history });
+        const it = itemById(t.itemId);
+        if (it) await S.db.doc("items/" + it.id).update({ log: [...(it.log || []), { id: newId(), date: d, what: t.title, cost: "", by: "", task: t.id }] });
+      }, `Logged. Next due ${nice(next)}`);
       if (inItem) itemSheet(inItem);
       return;
     }
@@ -524,6 +693,7 @@ document.addEventListener("click", async (e) => {
       await write(async () => {
         for (const t of S.tasks.filter((t) => t.example)) await S.db.doc("tasks/" + t.id).delete();
         for (const i of S.items.filter((i) => i.example)) await S.db.doc("items/" + i.id).delete();
+        for (const x of S.parts.filter((x) => x.example)) await S.db.doc("parts/" + x.id).delete();
       }, "Examples removed");
       return;
     }
@@ -559,6 +729,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".row.clickable")) { e.preventDefault(); e.target.click(); }
 });
 for (const id of ["q", "f-type", "f-loc"]) $(id).addEventListener("input", () => renderItems(S.loaded.items && S.loaded.tasks));
+for (const id of ["pq", "f-pcat"]) $(id).addEventListener("input", () => renderParts(S.loaded.items && S.loaded.tasks));
 
 function saveFile(filename, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -573,8 +744,7 @@ function exportCsv() {
   saveFile(`homebox-${today()}.csv`, "﻿" + lines.join("\r\n"), "text/csv");
 }
 function backup() {
-  const data = { app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: localDb.raw().items, tasks: localDb.raw().tasks };
-  saveFile(`homebox-backup-${today()}.json`, JSON.stringify(data, null, 2), "application/json");
+  saveFile(`homebox-backup-${today()}.json`, snapshot(), "application/json");
   setMeta({ lastBackup: today() }); render(); toast("Backup downloaded");
 }
 let pendingRestore = null;
@@ -584,17 +754,17 @@ $("restore-file").addEventListener("change", async (e) => {
   try { data = JSON.parse(await f.text()); } catch {}
   const ok = data && data.app === "homebox" && data.items && typeof data.items === "object" && data.tasks && typeof data.tasks === "object";
   if (!ok) { toast("That file isn't a Homebox backup."); return; }
-  pendingRestore = { items: data.items, tasks: data.tasks, asFile: S.openingFile ? f.name : "" };
+  pendingRestore = { items: data.items, tasks: data.tasks, parts: data.parts || {}, asFile: S.openingFile ? f.name : "" };
   sheet.dataset.back = "";
   if (S.openingFile) {
     S.openingFile = false;
     return openSheet(`<div><h2>Open data file</h2>
-    <p><b>${esc(f.name)}</b> has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks.</p>
+    <p><b>${esc(f.name)}</b> has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks${data.parts ? ` and ${Object.keys(data.parts).length} parts` : ""}.</p>
     <p>Opening it replaces what's in Homebox in this browser with the file's contents. From then on, use <b>Save to file</b> to keep the file up to date.</p>
     <footer><div class="r"><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="do-restore" id="btn-do-open">Open file</button></div></footer></div>`);
   }
   openSheet(`<div><h2>Restore from backup</h2>
-    <p>This backup from ${esc(data.exportedAt ? nice(data.exportedAt.slice(0, 10)) : "an earlier date")} has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks.</p>
+    <p>This backup from ${esc(data.exportedAt ? nice(data.exportedAt.slice(0, 10)) : "an earlier date")} has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks${data.parts ? ` and ${Object.keys(data.parts).length} parts` : ""}.</p>
     <p>Restoring replaces everything currently in Homebox on this device.</p>
     <footer><div class="r"><button class="btn" data-act="close">Cancel</button><button class="btn danger" data-act="do-restore" id="btn-do-restore">Replace my data</button></div></footer></div>`);
 });
@@ -607,9 +777,9 @@ const CAN_FS = typeof window.showSaveFilePicker === "function" && typeof window.
 const FILE = { handle: null, status: "off", savedAt: null, timer: null, queue: Promise.resolve() };
 const FILE_TYPES = [{ description: "Homebox data", accept: { "application/json": [".json"] } }];
 const stable = (v) => Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stable(v[k])).join(",")}}` : JSON.stringify(v ?? null);
-function sigOf(d) { const s = stable({ items: d.items || {}, tasks: d.tasks || {} }); let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36) + "." + s.length; }
+function sigOf(d) { const s = stable({ items: d.items || {}, tasks: d.tasks || {}, parts: d.parts || {} }); let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36) + "." + s.length; }
 const localSig = () => sigOf(localDb.raw());
-const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks }, null, 2); };
+const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks, parts: r.parts }, null, 2); };
 function parseHomebox(text) {
   try { const d = JSON.parse(text); return d && d.app === "homebox" && d.items && typeof d.items === "object" && d.tasks && typeof d.tasks === "object" ? d : null; } catch { return null; }
 }
@@ -746,21 +916,21 @@ window.addEventListener("beforeunload", (e) => {
 
 /* ---------- local storage (this browser only) ---------- */
 const KEY = "homebox:v1", META = "homebox:meta";
-const blank = () => ({ items: {}, tasks: {} });
-function readStore() { try { const d = JSON.parse(localStorage.getItem(KEY)); return d && d.items && d.tasks ? d : null; } catch { return null; } }
+const blank = () => ({ items: {}, tasks: {}, parts: {} });
+function readStore() { try { const d = JSON.parse(localStorage.getItem(KEY)); return d && d.items && d.tasks ? { parts: {}, ...d } : null; } catch { return null; } }
 function meta() { try { return JSON.parse(localStorage.getItem(META)) || {}; } catch { return {}; } }
 function setMeta(patch) { try { localStorage.setItem(META, JSON.stringify({ ...meta(), ...patch })); } catch {} }
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const localDb = (() => {
   let store = readStore() || blank();
-  const listeners = { items: [], tasks: [] };
+  const listeners = { items: [], tasks: [], parts: [] };
   const emit = (col) => { const docs = Object.entries(store[col]).map(([id, d]) => ({ id, data: () => d })); listeners[col].forEach((fn) => fn({ docs })); };
   function commit(mutate) {
     const before = JSON.stringify(store);
     mutate();
     try { localStorage.setItem(KEY, JSON.stringify(store)); }
     catch (e) { store = JSON.parse(before); throw e; }
-    emit("items"); emit("tasks");
+    emit("items"); emit("tasks"); emit("parts");
     onCommit.forEach((fn) => fn());
   }
   const ref = (col, id) => ({
@@ -769,12 +939,12 @@ const localDb = (() => {
     async update(d) { commit(() => { store[col][id] = { ...store[col][id], ...JSON.parse(JSON.stringify(d)) }; }); },
     async delete() { commit(() => { delete store[col][id]; }); },
   });
-  window.addEventListener("storage", (e) => { if (e.key === KEY) { store = readStore() || blank(); emit("items"); emit("tasks"); } });
+  window.addEventListener("storage", (e) => { if (e.key === KEY) { store = readStore() || blank(); emit("items"); emit("tasks"); emit("parts"); } });
   return {
     doc(path) { const [col, id] = path.split("/"); return ref(col, id); },
     collection(col) { return { doc: (id) => ref(col, id || newId()), onSnapshot(fn) { listeners[col].push(fn); setTimeout(() => emit(col)); return () => {}; } }; },
     raw: () => JSON.parse(JSON.stringify(store)),
-    async replace(next) { commit(() => { store = { items: { ...next.items }, tasks: { ...next.tasks } }; }); },
+    async replace(next) { commit(() => { store = { items: { ...next.items }, tasks: { ...next.tasks }, parts: { ...(next.parts || {}) } }; }); },
     isNew: () => readStore() === null,
   };
 })();
@@ -783,8 +953,8 @@ function seedExamples() {
   const d = (n, unit = "days") => addInterval(today(), n, unit);
   const items = {
     "ex-furnace": { example: true, brand: "Carrier", product: "Performance 96 gas furnace", type: "HVAC", location: "Basement", model: "59SC5A060E17", purchaseDate: d(-5, "years"), price: "$3,400 installed", store: "ABC Heating & Cooling", warrantyEnd: d(5, "years"), warrantyNotes: "Parts 10 yr (registered). Labor 1 yr.", specs: "60,000 BTU, 96% AFUE\n120V / 15A circuit\n17.5\" W x 33\" H x 29.5\" D", parts: "Filter 16x25x1 MERV 8", service: "ABC Heating, 555-0142", notes: "Filter slot is on the left side of the blower cabinet." },
-    "ex-heater": { example: true, brand: "Rheem", product: "50 gal water heater", type: "Plumbing", location: "Utility closet", purchaseDate: d(-6, "years"), warrantyEnd: d(40), warrantyNotes: "6 yr tank warranty" },
-    "ex-mower": { example: true, brand: "Honda", product: "HRN216 lawn mower", type: "Yard & garden", location: "Garage", model: "HRN216VKA", purchaseDate: d(-3, "years"), parts: "Blade 72511-VH7-000, spark plug NGK BPR5ES" },
+    "ex-heater": { example: true, brand: "Rheem", product: "50 gal water heater", type: "Plumbing", location: "Utility closet", purchaseDate: d(-9, "years"), warrantyEnd: d(40), warrantyNotes: "6 yr tank warranty", registered: "yes", lifespan: "10", receipt: "Paper copy in the utility closet folder", log: [{ id: "ex-l1", date: d(-14, "months"), what: "Replaced anode rod", cost: "$45", by: "Me" }] },
+    "ex-mower": { example: true, brand: "Honda", product: "HRN216 lawn mower", type: "Yard & garden", location: "Garage", model: "HRN216VKA", purchaseDate: d(-3, "years"), parts: "Blade 72511-VH7-000, spark plug NGK BPR5ES", lifespan: "10" },
   };
   const tasks = {
     "ex-filter": { example: true, title: "Replace furnace filter", itemId: "ex-furnace", every: 3, unit: "months", nextDue: d(-10), lastDone: d(-100), notes: "16x25x1 MERV 8", history: [d(-100)] },
@@ -792,7 +962,11 @@ function seedExamples() {
     "ex-flush": { example: true, title: "Flush water heater", itemId: "ex-heater", every: 1, unit: "years", nextDue: d(4, "months"), lastDone: d(-8, "months"), history: [d(-8, "months")] },
     "ex-winter": { example: true, title: "Winterize mower", itemId: "ex-mower", every: 1, unit: "years", nextDue: d(21), notes: "Add fuel stabilizer, run dry, change oil.", history: [] },
   };
-  return localDb.replace({ items, tasks });
+  const parts = {
+    "ex-pex": { example: true, name: "PEX elbow", category: "Plumbing", size: "1/2\" crimp, brass", qty: "6", unit: "pcs", stored: "Garage, bin 3", source: "Menards" },
+    "ex-filter-stock": { example: true, name: "Furnace filter", category: "HVAC", size: "16x25x1 MERV 8", qty: "2", unit: "pcs", stored: "Basement shelf", itemId: "ex-furnace" },
+  };
+  return localDb.replace({ items, tasks, parts });
 }
 
 /* ---------- boot ---------- */
@@ -802,6 +976,7 @@ render();
   if (localDb.isNew()) { try { await seedExamples(); } catch {} }
   localDb.collection("items").onSnapshot((s) => { S.items = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.items = true; render(); refreshSheet(); });
   localDb.collection("tasks").onSnapshot((s) => { S.tasks = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.tasks = true; render(); refreshSheet(); });
+  localDb.collection("parts").onSnapshot((s) => { S.parts = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
   try { navigator.storage?.persist?.(); } catch {}
   if (meta().fileMode === "auto") {
     if (!CAN_FS) { setMeta({ fileMode: "manual" }); return render(); }
@@ -812,7 +987,7 @@ render();
   }
 })();
 function refreshSheet() {
-  const open = dlg.open && sheet.querySelector("[data-item]");
+  const open = dlg.open && sheet.querySelector("div[data-item]");
   if (open) itemSheet(open.dataset.item);
 }
 </script>
