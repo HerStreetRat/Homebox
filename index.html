@@ -167,14 +167,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
     <div id="items-list"></div>
   </section>
 
-  <footer class="datafoot">
-    <span id="data-note">Saved in this browser only. Download a backup now and then.</span>
-    <span class="actions">
-      <button class="btn small" data-act="backup" id="btn-backup">Download backup</button>
-      <button class="btn small" data-act="restore" id="btn-restore">Restore from backup</button>
-      <button class="btn small" data-act="export" id="btn-export">Export spreadsheet (CSV)</button>
-    </span>
-  </footer>
+  <footer class="datafoot" id="datafoot"></footer>
   <input type="file" id="restore-file" accept=".json,application/json" hidden>
 </div>
 
@@ -246,11 +239,17 @@ function render() {
 
   const examples = S.items.some((i) => i.example) || S.tasks.some((t) => t.example);
   const real = S.items.filter((i) => !i.example).length + S.tasks.filter((t) => !t.example).length;
-  const last = meta().lastBackup;
-  const stale = real >= 3 && (!last || daysUntil(last) < -30);
+  const m = meta(), last = m.lastBackup, mode = m.fileMode || "";
+  const stale = !mode && real >= 3 && (!last || daysUntil(last) < -30);
+  const unsaved = mode === "manual" && localSig() !== m.savedSig;
+  let fileNotice = "";
+  if (mode === "auto" && FILE.status === "needs-permission") fileNotice = `<div class="notice"><span>Homebox saves to <b>${esc(m.fileName || "your data file")}</b>. Click Reconnect so it can keep saving there.</span><button class="btn small primary" data-act="fs-reconnect" id="btn-fs-reconnect">Reconnect</button></div>`;
+  if (mode === "auto" && FILE.status === "error") fileNotice = `<div class="notice"><span>Couldn't save to <b>${esc(m.fileName || "your data file")}</b>. It may have been moved, renamed or deleted. Your changes are still safe in this browser.</span><button class="btn small primary" data-act="fs-create" id="btn-fs-again">Choose where to save</button></div>`;
+  if (unsaved) fileNotice = `<div class="notice"><span>You have changes that aren't in your data file yet.</span><button class="btn small primary" data-act="file-save" id="btn-file-save-nudge">Save to file</button></div>`;
   $("banner").innerHTML = (examples ? `<div class="notice"><span>The entries marked <span class="ex">Example</span> are samples to show how Homebox works.</span><button class="btn small" data-act="clear-examples" id="btn-clear-ex">Remove examples</button></div>` : "")
+    + fileNotice
     + (stale ? `<div class="notice"><span>${last ? `Your last backup was ${esc(nice(last))}.` : "You haven't backed up yet."} Homebox lives only in this browser, so keep a copy somewhere safe.</span><button class="btn small primary" data-act="backup" id="btn-backup-nudge">Download backup</button></div>` : "");
-  $("data-note").textContent = last ? `Saved in this browser only. Last backup ${nice(last)}.` : "Saved in this browser only. Download a backup now and then.";
+  renderDataFoot(m, unsaved);
 
   fillLists();
   renderUpcoming(ready);
@@ -429,7 +428,7 @@ function itemSheet(id) {
 }
 
 /* ---------- writes ---------- */
-function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2400); }
+function toast(msg) { document.querySelectorAll(".toast").forEach((x) => x.remove()); const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2400); }
 async function write(fn, okMsg) {
   try { await fn(); if (okMsg) toast(okMsg); return true; }
   catch (e) {
@@ -530,14 +529,31 @@ document.addEventListener("click", async (e) => {
     }
     case "export": return exportCsv();
     case "backup": return backup();
-    case "restore": return $("restore-file").click();
+    case "restore": S.openingFile = false; return $("restore-file").click();
     case "do-restore": {
       if (!pendingRestore) return closeSheet();
-      if (!arm(el, "Tap again to replace everything")) return;
+      const asFile = pendingRestore.asFile;
+      if (!asFile && !arm(el, "Tap again to replace everything")) return;
       armed = null;
-      if (await write(() => localDb.replace(pendingRestore), "Backup restored")) { pendingRestore = null; closeSheet(); }
+      if (await write(() => localDb.replace(pendingRestore), asFile ? `Opened ${asFile}` : "Backup restored")) {
+        if (asFile) { setMeta({ fileMode: "manual", fileName: asFile, savedSig: localSig() }); render(); }
+        pendingRestore = null; closeSheet();
+      }
       return;
-    }  }
+    }
+    case "file-setup": return fileSetupSheet();
+    case "file-start": return manualSave("Saved. Keep this file somewhere safe.", true);
+    case "file-save": return manualSave("Saved to file");
+    case "file-open": S.openingFile = true; return $("restore-file").click();
+    case "file-stop": {
+      if (!arm(el, "Tap again to stop")) return;
+      armed = null; await fsForget(); setMeta({ fileMode: null }); FILE.status = "off"; render(); toast("Homebox now saves in this browser only"); return;
+    }
+    case "fs-create": return fsCreate().catch(fsFail);
+    case "fs-open": return fsOpen().catch(fsFail);
+    case "fs-reconnect": return fsReconnect().catch(fsFail);
+    case "fs-use-file": closeSheet(); return fsResolve("file");
+    case "fs-use-local": closeSheet(); return fsResolve("local");  }
 });
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".row.clickable")) { e.preventDefault(); e.target.click(); }
@@ -568,12 +584,164 @@ $("restore-file").addEventListener("change", async (e) => {
   try { data = JSON.parse(await f.text()); } catch {}
   const ok = data && data.app === "homebox" && data.items && typeof data.items === "object" && data.tasks && typeof data.tasks === "object";
   if (!ok) { toast("That file isn't a Homebox backup."); return; }
-  pendingRestore = { items: data.items, tasks: data.tasks };
+  pendingRestore = { items: data.items, tasks: data.tasks, asFile: S.openingFile ? f.name : "" };
   sheet.dataset.back = "";
+  if (S.openingFile) {
+    S.openingFile = false;
+    return openSheet(`<div><h2>Open data file</h2>
+    <p><b>${esc(f.name)}</b> has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks.</p>
+    <p>Opening it replaces what's in Homebox in this browser with the file's contents. From then on, use <b>Save to file</b> to keep the file up to date.</p>
+    <footer><div class="r"><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="do-restore" id="btn-do-open">Open file</button></div></footer></div>`);
+  }
   openSheet(`<div><h2>Restore from backup</h2>
     <p>This backup from ${esc(data.exportedAt ? nice(data.exportedAt.slice(0, 10)) : "an earlier date")} has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks.</p>
     <p>Restoring replaces everything currently in Homebox on this device.</p>
     <footer><div class="r"><button class="btn" data-act="close">Cancel</button><button class="btn danger" data-act="do-restore" id="btn-do-restore">Replace my data</button></div></footer></div>`);
+});
+
+/* ---------- data file ---------- */
+// Chrome and Edge can keep writing to a file the person picks ("auto").
+// Firefox and Safari can't, so there the file is opened and saved by hand ("manual").
+const onCommit = [];
+const CAN_FS = typeof window.showSaveFilePicker === "function" && typeof window.showOpenFilePicker === "function";
+const FILE = { handle: null, status: "off", savedAt: null, timer: null, queue: Promise.resolve() };
+const FILE_TYPES = [{ description: "Homebox data", accept: { "application/json": [".json"] } }];
+const stable = (v) => Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stable(v[k])).join(",")}}` : JSON.stringify(v ?? null);
+function sigOf(d) { const s = stable({ items: d.items || {}, tasks: d.tasks || {} }); let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36) + "." + s.length; }
+const localSig = () => sigOf(localDb.raw());
+const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks }, null, 2); };
+function parseHomebox(text) {
+  try { const d = JSON.parse(text); return d && d.app === "homebox" && d.items && typeof d.items === "object" && d.tasks && typeof d.tasks === "object" ? d : null; } catch { return null; }
+}
+
+function renderDataFoot(m, unsaved) {
+  const mode = m.fileMode || "", name = esc(m.fileName || "homebox.json");
+  const csv = `<button class="btn small" data-act="export" id="btn-export">Export spreadsheet (CSV)</button>`;
+  const stop = `<button class="btn small" data-act="file-stop" id="btn-file-stop">Stop using a file</button>`;
+  let note, btns;
+  if (mode === "auto") {
+    note = FILE.status === "connected" ? `Saving automatically to <b>${name}</b>${FILE.savedAt ? ` · last saved ${FILE.savedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}.` : `Set to save to <b>${name}</b>, but not connected right now.`;
+    btns = `<button class="btn small" data-act="fs-open" id="btn-fs-open">Open a different file</button>${stop}${csv}`;
+  } else if (mode === "manual") {
+    note = `Using data file <b>${name}</b>. ${unsaved ? `<b class="txt-soon">Unsaved changes.</b>` : "Everything is saved to the file."}`;
+    btns = `<button class="btn small${unsaved ? " primary" : ""}" data-act="file-save" id="btn-file-save">Save to file</button><button class="btn small" data-act="file-open" id="btn-file-open">Open file</button>${stop}${csv}`;
+  } else {
+    note = m.lastBackup ? `Saved in this browser only. Last backup ${esc(nice(m.lastBackup))}.` : "Saved in this browser only. Download a backup now and then.";
+    btns = `<button class="btn small primary" data-act="file-setup" id="btn-file-setup">Keep data in a file…</button><button class="btn small" data-act="backup" id="btn-backup">Download backup</button><button class="btn small" data-act="restore" id="btn-restore">Restore from backup</button>${csv}`;
+  }
+  $("datafoot").innerHTML = `<span id="data-note">${note}</span><span class="actions">${btns}</span>`;
+}
+
+function fileSetupSheet() {
+  sheet.dataset.back = "";
+  if (CAN_FS) return openSheet(`<div><h2>Keep your data in a file</h2>
+    <p>Homebox will save everything to a file on your computer, like <b>homebox.json</b> in your Documents folder, and keep it up to date automatically as you make changes.</p>
+    <p>Put the file in a OneDrive, Dropbox or iCloud Drive folder and it's backed up too. You can open the same file from Homebox on another computer.</p>
+    <footer><button class="btn" data-act="close">Cancel</button><div class="r"><button class="btn" data-act="fs-open" id="btn-fs-open-setup">Open an existing file</button><button class="btn primary" data-act="fs-create" id="btn-fs-create">Create a new file</button></div></footer></div>`);
+  openSheet(`<div><h2>Keep your data in a file</h2>
+    <p>This browser doesn't let websites save to a file on their own, so Homebox does it in two steps:</p>
+    <p><b>Save to file</b> writes everything to <b>homebox.json</b>. <b>Open file</b> loads it back. Homebox reminds you whenever you have changes that aren't saved to the file yet.</p>
+    <p class="hint">In Firefox, so you can pick the folder and save over the same file each time: open Settings, find <b>Downloads</b> under Files and Applications, and choose <b>Always ask you where to save files</b>. Chrome and Edge can save to the file automatically, with no extra steps.</p>
+    <footer><button class="btn" data-act="close">Cancel</button><div class="r"><button class="btn" data-act="file-open" id="btn-file-open-setup">Open an existing file</button><button class="btn primary" data-act="file-start" id="btn-file-start">Save to a new file</button></div></footer></div>`);
+}
+
+function manualSave(msg, starting) {
+  const m = meta(), name = (starting ? "" : m.fileName) || "homebox.json";
+  saveFile(name, snapshot(), "application/json");
+  setMeta({ fileMode: "manual", fileName: name, savedSig: localSig(), lastBackup: today() });
+  if (dlg.open && !sheet.querySelector("[data-item]")) closeSheet();
+  render(); toast(msg);
+}
+
+// Remember the chosen file between visits (Chrome/Edge store file handles in IndexedDB).
+function kv(mode, fn) {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("homebox", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onerror = () => rej(r.error);
+    r.onsuccess = () => { const t = r.result.transaction("kv", mode); const q = fn(t.objectStore("kv")); t.oncomplete = () => res(q?.result); t.onerror = () => rej(t.error); };
+  });
+}
+const fsRemember = (h) => kv("readwrite", (s) => s.put(h, "handle")).catch(() => {});
+const fsForget = () => kv("readwrite", (s) => s.delete("handle")).catch(() => {});
+const fsRecall = () => kv("readonly", (s) => s.get("handle")).catch(() => null);
+
+function fsFail(e) {
+  if (e?.name === "AbortError") return;
+  toast(e?.name === "NotAllowedError" ? "Homebox needs permission to save to that file." : "Couldn't use that file. Try again or pick another.");
+}
+async function fsWriteNow() {
+  if (!FILE.handle) return;
+  try {
+    const w = await FILE.handle.createWritable();
+    await w.write(snapshot()); await w.close();
+    FILE.status = "connected"; FILE.savedAt = new Date();
+    setMeta({ savedSig: localSig(), lastBackup: today() });
+  } catch (e) { FILE.status = e?.name === "NotAllowedError" ? "needs-permission" : "error"; }
+  render();
+}
+function fsScheduleWrite() {
+  if (meta().fileMode !== "auto" || FILE.status !== "connected") return;
+  clearTimeout(FILE.timer);
+  FILE.timer = setTimeout(() => { FILE.timer = null; FILE.queue = FILE.queue.then(fsWriteNow); }, 400);
+}
+onCommit.push(fsScheduleWrite);
+
+async function fsUse(handle) {
+  FILE.handle = handle; FILE.status = "connected";
+  setMeta({ fileMode: "auto", fileName: handle.name });
+  await fsRemember(handle);
+}
+async function fsCreate() {
+  const h = await window.showSaveFilePicker({ suggestedName: "homebox.json", types: FILE_TYPES });
+  await fsUse(h); await fsWriteNow();
+  closeSheet(); toast(`Saving to ${h.name}`);
+}
+async function fsOpen() {
+  const [h] = await window.showOpenFilePicker({ types: FILE_TYPES });
+  if ((await h.requestPermission({ mode: "readwrite" })) !== "granted") throw Object.assign(new Error(), { name: "NotAllowedError" });
+  const data = parseHomebox(await (await h.getFile()).text());
+  if (!data) { toast("That file isn't a Homebox data file."); return; }
+  await localDb.replace(data);
+  await fsUse(h); setMeta({ savedSig: localSig() }); FILE.savedAt = new Date();
+  closeSheet(); render(); toast(`Opened ${h.name}`);
+}
+async function fsReconnect() {
+  if (!FILE.handle) return fileSetupSheet();
+  if ((await FILE.handle.requestPermission({ mode: "readwrite" })) !== "granted") return;
+  await fsSync();
+}
+let fsPendingFile = null;
+// Reconcile the file with this browser. savedSig is the last state both agreed on.
+async function fsSync() {
+  if (!FILE.handle || FILE.timer) return;
+  let data;
+  try { data = parseHomebox(await (await FILE.handle.getFile()).text()); }
+  catch (e) { FILE.status = e?.name === "NotAllowedError" ? "needs-permission" : "error"; return render(); }
+  if (!data) { FILE.status = "error"; return render(); }
+  FILE.status = "connected";
+  const fs = sigOf(data), ls = localSig(), base = meta().savedSig;
+  if (fs === ls) { setMeta({ savedSig: ls }); }
+  else if (ls === base) { await localDb.replace(data); setMeta({ savedSig: localSig() }); toast("Loaded the latest changes from your file"); }
+  else if (fs === base) { await fsWriteNow(); }
+  else {
+    fsPendingFile = data; sheet.dataset.back = "";
+    openSheet(`<div><h2>Two different versions</h2>
+      <p><b>${esc(FILE.handle.name)}</b> was changed somewhere else, maybe on another computer, and Homebox in this browser has changes too.</p>
+      <p>Choose which version to keep. The other one is replaced.</p>
+      <footer><div class="r"><button class="btn" data-act="fs-use-local" id="btn-fs-local">Keep this browser's version</button><button class="btn primary" data-act="fs-use-file" id="btn-fs-file">Use the file's version</button></div></footer></div>`);
+  }
+  render();
+}
+async function fsResolve(which) {
+  if (which === "file" && fsPendingFile) { await localDb.replace(fsPendingFile); setMeta({ savedSig: localSig() }); }
+  else await fsWriteNow();
+  fsPendingFile = null; render();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && meta().fileMode === "auto" && FILE.status === "connected") fsSync(); });
+window.addEventListener("beforeunload", (e) => {
+  const m = meta();
+  if ((m.fileMode === "manual" && localSig() !== m.savedSig) || FILE.timer) { e.preventDefault(); e.returnValue = ""; }
 });
 
 /* ---------- local storage (this browser only) ---------- */
@@ -593,6 +761,7 @@ const localDb = (() => {
     try { localStorage.setItem(KEY, JSON.stringify(store)); }
     catch (e) { store = JSON.parse(before); throw e; }
     emit("items"); emit("tasks");
+    onCommit.forEach((fn) => fn());
   }
   const ref = (col, id) => ({
     id,
@@ -634,6 +803,13 @@ render();
   localDb.collection("items").onSnapshot((s) => { S.items = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.items = true; render(); refreshSheet(); });
   localDb.collection("tasks").onSnapshot((s) => { S.tasks = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.tasks = true; render(); refreshSheet(); });
   try { navigator.storage?.persist?.(); } catch {}
+  if (meta().fileMode === "auto") {
+    if (!CAN_FS) { setMeta({ fileMode: "manual" }); return render(); }
+    FILE.handle = await fsRecall();
+    if (!FILE.handle) { FILE.status = "error"; return render(); }
+    const perm = await FILE.handle.queryPermission({ mode: "readwrite" }).catch(() => "denied");
+    if (perm === "granted") await fsSync(); else { FILE.status = "needs-permission"; render(); }
+  }
 })();
 function refreshSheet() {
   const open = dlg.open && sheet.querySelector("[data-item]");
