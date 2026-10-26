@@ -290,17 +290,18 @@ function render() {
 
   const examples = S.items.some((i) => i.example) || S.tasks.some((t) => t.example) || S.parts.some((x) => x.example) || S.projects.some((x) => x.example);
   const real = S.items.filter((i) => !i.example).length + S.tasks.filter((t) => !t.example).length;
-  const m = meta(), last = m.lastBackup, mode = m.fileMode || "";
-  const stale = !mode && real >= 3 && (!last || daysUntil(last) < -30);
+  const m = meta(), last = m.lastBackup, mode = SRV.on ? "" : m.fileMode || "";
+  const stale = !SRV.on && !mode && real >= 3 && (!last || daysUntil(last) < -30);
   const unsaved = mode === "manual" && localSig() !== m.savedSig;
   let fileNotice = "";
   if (mode === "auto" && FILE.status === "needs-permission") fileNotice = `<div class="notice"><span>Homebox saves to <b>${esc(m.fileName || "your data file")}</b>. Click Reconnect so it can keep saving there.</span><button class="btn small primary" data-act="fs-reconnect" id="btn-fs-reconnect">Reconnect</button></div>`;
   if (mode === "auto" && FILE.status === "error") fileNotice = `<div class="notice"><span>Couldn't save to <b>${esc(m.fileName || "your data file")}</b>. It may have been moved, renamed or deleted. Your changes are still safe in this browser.</span><button class="btn small primary" data-act="fs-create" id="btn-fs-again">Choose where to save</button></div>`;
   if (unsaved) fileNotice = `<div class="notice"><span>You have changes that aren't in your data file yet.</span><button class="btn small primary" data-act="file-save" id="btn-file-save-nudge">Save to file</button></div>`;
+  if (SRV.on && SRV.status === "signed-out") fileNotice = `<div class="notice"><span>Sign in to save to your home server. Until then, changes stay in this browser only.</span><button class="btn small primary" data-act="srv-signin" id="btn-srv-signin-nudge">Sign in</button></div>`;
   $("banner").innerHTML = (examples ? `<div class="notice"><span>The entries marked <span class="ex">Example</span> are samples to show how Homebox works.</span><button class="btn small" data-act="clear-examples" id="btn-clear-ex">Remove examples</button></div>` : "")
     + fileNotice
     + (stale ? `<div class="notice"><span>${last ? `Your last backup was ${esc(nice(last))}.` : "You haven't backed up yet."} Homebox lives only in this browser, so keep a copy somewhere safe.</span><button class="btn small primary" data-act="backup" id="btn-backup-nudge">Download backup</button></div>` : "");
-  renderDataFoot(m, unsaved);
+  renderDataFoot({ ...m, fileMode: mode }, unsaved);
 
   fillLists();
   renderUpcoming(ready);
@@ -725,6 +726,7 @@ const formData = (f) => Object.fromEntries([...new FormData(f).entries()].map(([
 document.addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target, id = f.dataset.id;
+  if (f.id === "srv-auth") return srvAuthSubmit(f);
   if (!S.db) return;
   if (f.id === "item-form") {
     const d = formData(f);
@@ -791,7 +793,7 @@ document.addEventListener("click", async (e) => {
   if (tab) { S.view = tab.dataset.view; for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-selected", b === tab); for (const v of ["upcoming", "items", "parts", "projects"]) $("view-" + v).hidden = S.view !== v; return; }
   const el = e.target.closest("[data-act]"); if (!el) return;
   const act = el.dataset.act, id = el.dataset.id;
-  if (!["del-item", "del-task", "del-log", "del-part", "del-project"].includes(act) && armed) { armed.classList.remove("armed"); armed.textContent = armed.dataset.label; armed = null; }
+  if (armed && armed !== el) { armed.classList.remove("armed"); armed.textContent = armed.dataset.label; armed = null; }
   const inItem = el.closest("[data-item]")?.dataset.item;
   switch (act) {
     case "close": return closeSheet();
@@ -917,7 +919,11 @@ document.addEventListener("click", async (e) => {
     case "fs-open": return fsOpen().catch(fsFail);
     case "fs-reconnect": return fsReconnect().catch(fsFail);
     case "fs-use-file": closeSheet(); return fsResolve("file");
-    case "fs-use-local": closeSheet(); return fsResolve("local");  }
+    case "fs-use-local": closeSheet(); return fsResolve("local");
+    case "srv-signin": return srvFetch("status").then((r) => srvAuthSheet(r.body?.configured === false ? "setup" : "login")).catch(() => toast("Can't reach your home server right now."));
+    case "srv-signout": if (!arm(el, "Tap again to sign out")) return; armed = null; return srvSignOut();
+    case "srv-use-server": return srvResolve("server");
+    case "srv-use-local": return srvResolve("local");  }
 });
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".row.clickable")) { e.preventDefault(); e.target.click(); }
@@ -984,7 +990,15 @@ function renderDataFoot(m, unsaved) {
   const csv = `<button class="btn small" data-act="export" id="btn-export">Export spreadsheet (CSV)</button>`;
   const stop = `<button class="btn small" data-act="file-stop" id="btn-file-stop">Stop using a file</button>`;
   let note, btns;
-  if (mode === "auto") {
+  if (SRV.on) {
+    const t = (d) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const pending = SRV.timer || SRV.inflight || localSig() !== m.serverSig;
+    note = SRV.status === "connected" ? `Saved on your home server${pending ? " · saving…" : SRV.lastSync ? ` · synced ${t(SRV.lastSync)}` : ""}.`
+      : SRV.status === "signed-out" ? "Not signed in to your home server. Changes stay in this browser until you sign in."
+      : `Can't reach your home server right now. Changes are kept in this browser and sync when it's back.`;
+    btns = (SRV.status === "signed-out" ? `<button class="btn small primary" data-act="srv-signin" id="btn-srv-signin">Sign in</button>` : `<button class="btn small" data-act="srv-signout" id="btn-srv-signout">Sign out</button>`)
+      + `<button class="btn small" data-act="backup" id="btn-backup">Download backup</button><button class="btn small" data-act="restore" id="btn-restore">Restore from backup</button>${csv}`;
+  } else if (mode === "auto") {
     note = FILE.status === "connected" ? `Saving automatically to <b>${name}</b>${FILE.savedAt ? ` · last saved ${FILE.savedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}.` : `Set to save to <b>${name}</b>, but not connected right now.`;
     btns = `<button class="btn small" data-act="fs-open" id="btn-fs-open">Open a different file</button>${stop}${csv}`;
   } else if (mode === "manual") {
@@ -1106,8 +1120,141 @@ async function fsResolve(which) {
 document.addEventListener("visibilitychange", () => { if (!document.hidden && meta().fileMode === "auto" && FILE.status === "connected") fsSync(); });
 window.addEventListener("beforeunload", (e) => {
   const m = meta();
-  if ((m.fileMode === "manual" && localSig() !== m.savedSig) || FILE.timer) { e.preventDefault(); e.returnValue = ""; }
+  if ((!SRV.on && m.fileMode === "manual" && localSig() !== m.savedSig) || FILE.timer || SRV.timer || SRV.inflight) { e.preventDefault(); e.returnValue = ""; }
 });
+
+/* ---------- home server ---------- */
+// When Homebox is served by server/server.js, everything is also saved on that server so all
+// devices share one copy. On GitHub Pages or from a file there is no /api, so this stays off.
+// meta.serverVersion/serverSig record the last state this browser and the server agreed on.
+const TOKEN_KEY = "homebox:server-token";
+const SRV = { on: false, status: "off", timer: null, inflight: 0, queue: Promise.resolve(), pending: null, lastSync: null };
+const srvToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } };
+function srvSetToken(t) { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch {} }
+async function srvFetch(route, opts = {}) {
+  const t = srvToken();
+  const res = await fetch("api/" + route, { ...opts, cache: "no-store", headers: { "Content-Type": "application/json", ...(t ? { Authorization: "Bearer " + t } : {}) } });
+  let body = null; try { body = await res.json(); } catch {}
+  return { status: res.status, body };
+}
+// One server call at a time, so pulls and pushes never cross.
+function srvRun(fn) {
+  SRV.inflight++;
+  const run = SRV.queue.then(fn).catch(() => { SRV.status = "offline"; }).finally(() => { SRV.inflight--; render(); });
+  SRV.queue = run;
+  return run;
+}
+const dataOnly = (r = localDb.raw()) => ({ items: r.items || {}, tasks: r.tasks || {}, parts: r.parts || {}, projects: r.projects || {} });
+const onlyExamples = (d) => Object.values(d).every((col) => Object.values(col).every((x) => x && x.example));
+const deviceName = () => { const ua = navigator.userAgent; return (/Firefox/.test(ua) ? "Firefox" : /Edg\//.test(ua) ? "Edge" : /Chrome/.test(ua) ? "Chrome" : /Safari/.test(ua) ? "Safari" : "Browser") + (/Android/.test(ua) ? " on Android" : /iPhone|iPad/.test(ua) ? " on iOS" : /Windows/.test(ua) ? " on Windows" : /Mac/.test(ua) ? " on Mac" : ""); };
+
+async function srvInit() {
+  if (location.protocol === "file:") return;
+  let r;
+  try { r = await srvFetch("status"); }
+  catch { if (meta().serverMode) { SRV.on = true; SRV.status = "offline"; } return; }
+  if (r.status !== 200 || r.body?.app !== "homebox") return;
+  SRV.on = true; setMeta({ serverMode: true });
+  if (!r.body.configured) { SRV.status = "signed-out"; return srvAuthSheet("setup"); }
+  if (!r.body.authed) return srvSignedOut();
+  await srvPull();
+}
+function srvSignedOut() {
+  SRV.status = "signed-out"; render();
+  if (!dlg.open) srvAuthSheet("login");
+}
+function srvAuthSheet(mode) {
+  sheet.dataset.back = "";
+  const setup = mode === "setup";
+  openSheet(`<form id="srv-auth" data-mode="${mode}">
+    <h2>${setup ? "Save to your home server" : "Sign in to Homebox"}</h2>
+    <p>${setup ? "Homebox keeps one copy of your data on your home server, so every computer, phone and browser you use sees the same thing. Choose a password. You'll enter it once on each device." : "Enter your Homebox password to load and save your data on your home server."}</p>
+    <div class="fields">
+      <label class="f full">Password<input id="srv-pw" name="password" type="password" autocomplete="${setup ? "new-password" : "current-password"}" required></label>
+      ${setup ? `<label class="f full">Type it again<input id="srv-pw2" name="confirm" type="password" autocomplete="new-password" required></label>` : ""}
+    </div>
+    <div class="err" id="form-err" hidden></div>
+    <footer><div class="r"><button type="button" class="btn" data-act="close">Not now</button><button class="btn primary" type="submit" id="btn-srv-auth">${setup ? "Set password" : "Sign in"}</button></div></footer>
+  </form>`, "#srv-pw");
+}
+async function srvAuthSubmit(f) {
+  const d = formData(f), err = $("form-err"), setup = f.dataset.mode === "setup";
+  const fail = (msg) => { err.textContent = msg; err.hidden = false; };
+  if (setup && d.password.length < 8) return fail("Use at least 8 characters.");
+  if (setup && d.password !== d.confirm) return fail("The two passwords don't match.");
+  const btn = $("btn-srv-auth"); btn.disabled = true;
+  try {
+    const r = await srvFetch(setup ? "setup" : "login", { method: "POST", body: JSON.stringify({ password: d.password, device: deviceName() }) });
+    if (r.status !== 200) return fail(r.body?.error || "That didn't work. Try again.");
+    srvSetToken(r.body.token); closeSheet();
+    toast(setup ? "Password set. Saving to your home server." : "Signed in");
+    await srvPull();
+  } catch { fail("Can't reach your home server right now."); }
+  finally { btn.disabled = false; }
+}
+async function srvSignOut() {
+  await srvFetch("logout", { method: "POST" }).catch(() => {});
+  srvSetToken(""); SRV.status = "signed-out"; render();
+  toast("Signed out. This browser keeps its copy but stops syncing.");
+}
+
+const srvPull = () => SRV.on && !SRV.pending && !SRV.timer ? srvRun(async () => {
+  const r = await srvFetch("data");
+  if (r.status === 401) return srvSignedOut();
+  if (r.status !== 200) throw new Error();
+  SRV.status = "connected"; SRV.lastSync = new Date();
+  await srvReconcile(r.body);
+}) : undefined;
+
+async function srvReconcile(doc) {
+  const m = meta(), local = dataOnly(), ls = sigOf(local), ss = sigOf(doc.data);
+  if (ss === ls) return setMeta({ serverVersion: doc.version, serverSig: ls });
+  if (doc.version === 0) { setMeta({ serverVersion: 0 }); return srvPushNow(true); }
+  const localChanged = ls !== m.serverSig;
+  if (!localChanged || (m.serverVersion == null && onlyExamples(local))) return srvApply(doc, m.serverVersion != null);
+  if (doc.version === m.serverVersion) return srvPushNow();
+  srvConflict(doc);
+}
+async function srvApply(doc, announce) {
+  SRV.applying = true;
+  try { await localDb.replace(doc.data); } finally { SRV.applying = false; }
+  setMeta({ serverVersion: doc.version, serverSig: localSig() });
+  if (announce) toast("Updated with changes from another device");
+}
+async function srvPushNow(force) {
+  const data = dataOnly(), sig = sigOf(data), m = meta();
+  if (!force && sig === m.serverSig) return;
+  const r = await srvFetch("data", { method: "PUT", body: JSON.stringify({ baseVersion: m.serverVersion || 0, data }) });
+  if (r.status === 401) return srvSignedOut();
+  if (r.status === 409 && r.body) return srvReconcile(r.body);
+  if (r.status !== 200) throw new Error();
+  setMeta({ serverVersion: r.body.version, serverSig: sig });
+  SRV.status = "connected"; SRV.lastSync = new Date();
+}
+function srvSchedule() {
+  if (!SRV.on || SRV.applying || SRV.pending || SRV.status === "signed-out") return;
+  clearTimeout(SRV.timer);
+  SRV.timer = setTimeout(() => { SRV.timer = null; srvRun(() => srvPushNow()); }, 600);
+}
+onCommit.push(srvSchedule);
+
+function srvConflict(doc) {
+  SRV.pending = doc; sheet.dataset.back = "";
+  openSheet(`<div><h2>Two different versions</h2>
+    <p>Homebox on your home server was changed on another device${doc.updatedAt ? ` (${esc(new Date(doc.updatedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }))})` : ""}, and this browser has changes that aren't on the server yet.</p>
+    <p>Choose which version to keep. The other one is replaced. A daily copy of the server's data is kept on the server either way.</p>
+    <footer><div class="r"><button class="btn" data-act="srv-use-local" id="btn-srv-local">Keep this device's version</button><button class="btn primary" data-act="srv-use-server" id="btn-srv-server">Use the server's version</button></div></footer></div>`, null);
+}
+function srvResolve(which) {
+  const doc = SRV.pending; SRV.pending = null; closeSheet();
+  if (!doc) return;
+  if (which === "server") return srvRun(() => srvApply(doc, false));
+  setMeta({ serverVersion: doc.version });
+  return srvRun(() => srvPushNow(true));
+}
+setInterval(() => { if (!document.hidden) srvPull(); }, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) srvPull(); });
+window.addEventListener("online", () => srvPull());
 
 /* ---------- local storage (this browser only) ---------- */
 const KEY = "homebox:v1", META = "homebox:meta";
@@ -1182,6 +1329,8 @@ render();
   localDb.collection("projects").onSnapshot((s) => { S.projects = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
   try { navigator.storage?.persist?.(); } catch {}
   try { if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {}); } catch {}
+  await srvInit(); render();
+  if (SRV.on) return;
   if (meta().fileMode === "auto") {
     if (!CAN_FS) { setMeta({ fileMode: "manual" }); return render(); }
     FILE.handle = await fsRecall();

@@ -35,6 +35,18 @@ Without a data file, your data lives only in this browser on this device. It doe
 
 After you've opened Homebox once with an internet connection, it also opens and works offline. Your data is always on your device anyway. The **Add to calendar** and manual links still need a connection. In a Firefox private window, the offline copy isn't kept.
 
+## On your home server
+
+`server/server.js` serves the app and saves your data on the server, so every device and browser shares one copy. It needs Node 20 or newer and has no dependencies.
+
+```
+PORT=8080 DATA_DIR=/path/to/data node server/server.js
+```
+
+The first time you open it, Homebox asks you to choose a password. Each new device asks for it once. Changes save to the server automatically. If the server can't be reached, changes stay in the browser and sync when it's back. If two devices changed things at the same time, Homebox asks which version to keep.
+
+The data folder holds `homebox.json`, the password hash (`auth.json`), and a daily copy in `backups/` (the last 30 days). Back up that folder. When the app isn't served by this server (GitHub Pages, or opening the file directly), it works as before and saves in the browser.
+
 ## Hosting
 
 GitHub Pages serves this repository as-is (Settings → Pages → Deploy from branch → `main` / root). There's no build step: `index.html` is the whole app.
