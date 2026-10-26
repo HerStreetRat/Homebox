@@ -147,7 +147,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
     <div class="actions">
       <button class="btn primary" data-act="new-task" id="btn-new-task">Add maintenance</button>
       <button class="btn primary" data-act="new-item" id="btn-new-item">Add equipment</button>
-      <button class="btn primary" data-act="new-part" id="btn-new-part">Add parts/supplies</button>
+      <button class="btn primary" data-act="new-part" id="btn-new-part">Add parts &amp; supplies</button>
     </div>
   </header>
 
@@ -385,7 +385,7 @@ function renderParts(ready) {
   const el = $("parts-list");
   if (!ready) { el.innerHTML = ""; return; }
   if (!S.parts.length) {
-    el.innerHTML = `<div class="empty"><strong>No parts or supplies yet</strong>Keep track of spare fittings, pipe, wire, fasteners and other parts: what size they are, how many you have, and where they're kept.<br><br><button class="btn primary" data-act="new-part" id="btn-empty-part">Add parts/supplies</button></div>`;
+    el.innerHTML = `<div class="empty"><strong>No parts or supplies yet</strong>Keep track of spare fittings, pipe, wire, fasteners and other parts: what size they are, how many you have, and where they're kept.<br><br><button class="btn primary" data-act="new-part" id="btn-empty-part">Add parts &amp; supplies</button></div>`;
     return;
   }
   const q = $("pq").value.trim().toLowerCase(), fc = $("f-pcat").value;
@@ -538,7 +538,7 @@ function partForm(x = {}, back = "") {
   const opts = [...S.items].sort((a, b) => itemName(a).localeCompare(itemName(b)))
     .map((i) => `<option value="${i.id}"${i.id === x.itemId ? " selected" : ""}>${esc(itemName(i))}</option>`).join("");
   openSheet(`<form id="part-form" data-id="${esc(x.id || "")}">
-    <h2>${x.id ? "Edit part or supply" : "Add parts/supplies"}</h2>
+    <h2>${x.id ? "Edit part or supply" : "Add parts &amp; supplies"}</h2>
     <div class="fields">
       <label class="f full">Name<input id="p-name" name="name" value="${esc(x.name)}" placeholder="PEX elbow" required></label>
       <label class="f">Category<input id="p-cat" name="category" list="dl-pcats" value="${esc(x.category)}" placeholder="Plumbing"></label>
