@@ -12,6 +12,7 @@ It's a single web page with no server and no account. Everything you enter is sa
 - **Repair & service log:** dated entries on each item (what was done, cost, who did it). Marking a maintenance task done adds an entry automatically.
 - **Install date & expected lifespan:** shows each item's age and flags anything near or past the end of its expected life.
 - **Warranty details:** whether it's registered, a link to the warranty or registration page, and where the receipt is.
+- **Projects:** bigger jobs with status, priority, area, dates, budget, who's doing it, a link and related equipment. Each project has a steps checklist, a materials and shopping list, and a progress log. Costs in the log add up against the budget.
 - **Parts & supplies:** a separate list for spare fittings, pipe, wire, fasteners and so on, with size, quantity on hand, where it's kept, and what it's for.
 
 ## Keep your data in a file (recommended on a computer)

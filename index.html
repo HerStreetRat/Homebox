@@ -96,6 +96,15 @@ nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: 
 .log .entry:first-child { border-top: 0 }
 .log .entry .what { overflow-wrap: anywhere } .log .entry .sm { color: var(--muted); font-size: 13px }
 @media (max-width: 480px) { .log .entry { grid-template-columns: minmax(0, 1fr) auto } .log .entry .due { grid-column: 1 / -1 } }
+.log .entry.chk { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center }
+.log .entry.chk input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent) }
+.log .entry.chk label { cursor: pointer; overflow-wrap: anywhere }
+.log .entry.chk label.done { color: var(--muted); text-decoration: line-through }
+@media (max-width: 480px) { .log .entry.chk { grid-template-columns: auto minmax(0, 1fr) auto } }
+form.pj-add { display: flex; gap: 8px; margin-top: 8px }
+form.pj-add input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg) }
+.checks { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); font-weight: 400 }
+.checks label { display: flex; gap: 8px; align-items: center }
 .chip { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 3px; background: var(--tag); color: var(--tag-ink); font-weight: 500 }
 .pill { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid currentColor; font-weight: 500; white-space: nowrap }
 .pill.over { color: var(--over) } .pill.soon { color: var(--soon) } .pill.ok { color: var(--ok) } .pill.none { color: var(--muted) }
@@ -148,6 +157,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
       <button class="btn primary" data-act="new-task" id="btn-new-task">Add maintenance</button>
       <button class="btn primary" data-act="new-item" id="btn-new-item">Add equipment</button>
       <button class="btn primary" data-act="new-part" id="btn-new-part">Add parts &amp; supplies</button>
+      <button class="btn primary" data-act="new-project" id="btn-new-project">Add project</button>
     </div>
   </header>
 
@@ -164,6 +174,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
     <button role="tab" id="tab-upcoming" data-view="upcoming" aria-selected="true">Maintenance</button>
     <button role="tab" id="tab-items" data-view="items" aria-selected="false">Equipment</button>
     <button role="tab" id="tab-parts" data-view="parts" aria-selected="false">Parts &amp; supplies</button>
+    <button role="tab" id="tab-projects" data-view="projects" aria-selected="false">Projects</button>
   </nav>
 
   <section id="view-upcoming"></section>
@@ -174,6 +185,13 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
       <select id="f-loc" aria-label="Filter by location"><option value="">All locations</option></select>
     </div>
     <div id="items-list"></div>
+  </section>
+  <section id="view-projects" hidden>
+    <div class="toolbar">
+      <input id="jq" type="search" placeholder="Search projects, steps, materials…" aria-label="Search projects">
+      <select id="f-jstatus" aria-label="Filter by status"><option value="">All projects</option><option value="open">Not done yet</option><option value="Done">Done</option></select>
+    </div>
+    <div id="projects-list"></div>
   </section>
   <section id="view-parts" hidden>
     <div class="toolbar">
@@ -204,7 +222,7 @@ const TASK_IDEAS = ["Replace furnace filter", "Oil blower motor", "Winterize", "
 const UNITS = { days: "day", weeks: "week", months: "month", years: "year" };
 const RRULE = { days: "DAILY", weeks: "WEEKLY", months: "MONTHLY", years: "YEARLY" };
 
-const S = { items: [], tasks: [], parts: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
+const S = { items: [], tasks: [], parts: [], projects: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -270,7 +288,7 @@ function render() {
   $("s-soon").textContent = ready ? soon : "–";
   $("s-warr").textContent = ready ? warr : "–";
 
-  const examples = S.items.some((i) => i.example) || S.tasks.some((t) => t.example) || S.parts.some((x) => x.example);
+  const examples = S.items.some((i) => i.example) || S.tasks.some((t) => t.example) || S.parts.some((x) => x.example) || S.projects.some((x) => x.example);
   const real = S.items.filter((i) => !i.example).length + S.tasks.filter((t) => !t.example).length;
   const m = meta(), last = m.lastBackup, mode = m.fileMode || "";
   const stale = !mode && real >= 3 && (!last || daysUntil(last) < -30);
@@ -288,6 +306,7 @@ function render() {
   renderUpcoming(ready);
   renderItems(ready);
   renderParts(ready);
+  renderProjects(ready);
 }
 
 function fillLists() {
@@ -417,6 +436,134 @@ function renderParts(ready) {
   }).join("")}</div>`;
 }
 
+/* ---------- projects ---------- */
+const PJ_STATUS = ["In progress", "Planned", "Idea", "On hold", "Done"];
+const PJ_PRI = ["High", "Medium", "Low"];
+const projById = (id) => S.projects.find((x) => x.id === id);
+const money = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : 0; };
+const fmtMoney = (n) => n.toLocaleString(undefined, { style: "currency", currency: "USD", minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+const projSpent = (pj) => (pj.log || []).reduce((sum, x) => sum + money(x.cost), 0);
+const priClass = (pr) => pr === "High" ? "over" : pr === "Medium" ? "soon" : "none";
+function projMoney(pj) {
+  const spent = projSpent(pj), budget = money(pj.budget);
+  if (!budget && !spent) return null;
+  if (!budget) return { cls: "", text: `Spent ${fmtMoney(spent)}` };
+  return { cls: spent > budget ? "txt-over" : "", text: `Spent ${fmtMoney(spent)} of ${fmtMoney(budget)}` };
+}
+function projDue(pj) {
+  if (!pj.target || pj.status === "Done") return null;
+  const n = daysUntil(pj.target);
+  if (n < 0) return { cls: "txt-over", text: `${-n} day${n === -1 ? "" : "s"} past target` };
+  return { cls: n <= 14 ? "txt-soon" : "", text: `Target ${nice(pj.target)}` };
+}
+
+function renderProjects(ready) {
+  const el = $("projects-list");
+  if (!ready) { el.innerHTML = ""; return; }
+  if (!S.projects.length) {
+    el.innerHTML = `<div class="empty"><strong>No projects yet</strong>Plan bigger jobs here, like finishing the basement or replacing a fence: the steps, what to buy, the budget and how it's going.<br><br><button class="btn primary" data-act="new-project" id="btn-empty-project">Add project</button></div>`;
+    return;
+  }
+  const q = $("jq").value.trim().toLowerCase(), fs = $("f-jstatus").value;
+  const list = S.projects
+    .filter((x) => !fs || (fs === "open" ? x.status !== "Done" : x.status === fs))
+    .filter((x) => !q || [x.name, x.area, x.description, x.notes, x.who, ...(x.steps || []).map((s) => s.text), ...(x.materials || []).map((s) => s.text)].join(" ").toLowerCase().includes(q));
+  if (!list.length) { el.innerHTML = `<div class="empty">No projects match that search.</div>`; return; }
+  const row = (x) => {
+    const steps = x.steps || [], due = projDue(x), m = projMoney(x);
+    const stripe = due?.cls === "txt-over" ? "over" : x.status === "In progress" ? "soon" : x.status === "Done" ? "ok" : "";
+    return `<div class="row clickable ${stripe}" data-act="open-project" data-id="${x.id}" tabindex="0" role="button">
+      <span class="stripe"></span>
+      <div class="main">
+        <div class="title">${esc(x.name || "Untitled project")}${x.example ? '<span class="ex">Example</span>' : ""}</div>
+        <div class="meta">
+          ${x.area ? `<span class="chip">${esc(x.area)}</span>` : ""}
+          ${steps.length ? `<span>${steps.filter((s) => s.done).length} of ${steps.length} steps done</span>` : ""}
+          ${due ? `<span class="${due.cls}">${esc(due.text)}</span>` : ""}
+          ${x.status === "Done" && x.finished ? `<span>Finished ${esc(nice(x.finished))}</span>` : ""}
+          ${m ? `<span class="${m.cls}">${esc(m.text)}</span>` : ""}
+        </div>
+      </div>
+      <div class="side">${x.priority && x.status !== "Done" ? `<span class="pill ${priClass(x.priority)}">${esc(x.priority)} priority</span>` : ""}</div>
+    </div>`;
+  };
+  const rank = (x) => PJ_PRI.indexOf(x.priority) < 0 ? 9 : PJ_PRI.indexOf(x.priority);
+  el.innerHTML = PJ_STATUS.map((st) => {
+    const g = list.filter((x) => (PJ_STATUS.includes(x.status) ? x.status : "Idea") === st)
+      .sort((a, b) => st === "Done" ? (b.finished || "").localeCompare(a.finished || "") : rank(a) - rank(b) || (a.target || "9").localeCompare(b.target || "9"));
+    return g.length ? `<div class="group"><h3>${st} · ${g.length}</h3><div class="list">${g.map(row).join("")}</div></div>` : "";
+  }).join("");
+}
+
+function checklist(pj, key, label, placeholder) {
+  const arr = pj[key] || [];
+  return `<div class="sub"><span>${label}${arr.length ? ` · ${arr.filter((x) => x.done).length} of ${arr.length}` : ""}</span></div>
+    ${arr.length ? `<div class="log">${arr.map((x) => `<div class="entry chk">
+      <input type="checkbox" id="c-${esc(x.id)}" data-act="pj-toggle" data-list="${key}" data-cid="${esc(x.id)}"${x.done ? " checked" : ""}>
+      <label for="c-${esc(x.id)}" class="${x.done ? "done" : ""}">${esc(x.text)}</label>
+      <button type="button" class="btn small" data-act="pj-del" data-list="${key}" data-cid="${esc(x.id)}">Remove</button></div>`).join("")}</div>` : ""}
+    <form class="pj-add" data-list="${key}"><input name="text" id="add-${key}" placeholder="${esc(placeholder)}" aria-label="Add to ${esc(label)}" required><button class="btn small" type="submit">Add</button></form>`;
+}
+
+function projectSheet(id, focusSel = null) {
+  const pj = projById(id); if (!pj) return closeSheet();
+  sheet.dataset.back = ""; sheet.dataset.backcol = "";
+  const fact = (k, v, cls = "") => v ? `<dt>${k}</dt><dd class="${cls}">${esc(v)}</dd>` : "";
+  const due = projDue(pj), m = projMoney(pj);
+  const related = (pj.itemIds || []).map(itemById).filter(Boolean);
+  const log = [...(pj.log || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const dates = [pj.start ? `Started ${nice(pj.start)}` : "", pj.target ? `Target ${nice(pj.target)}` : "", pj.status === "Done" && pj.finished ? `Finished ${nice(pj.finished)}` : ""].filter(Boolean).join(" · ");
+  openSheet(`<div data-project="${id}">
+    <h2>${esc(pj.name || "Untitled project")}${pj.example ? '<span class="ex">Example</span>' : ""}</h2>
+    <dl class="facts">
+      <dt>Status</dt><dd>${esc(pj.status || "Idea")}${pj.priority ? ` · <span class="pill ${priClass(pj.priority)}">${esc(pj.priority)} priority</span>` : ""}</dd>
+      ${fact("Area", pj.area)}
+      ${dates ? `<dt>Dates</dt><dd>${esc(dates)}${due?.cls === "txt-over" ? `<br><span class="txt-over">${esc(due.text)}</span>` : ""}</dd>` : ""}
+      ${m ? `<dt>Budget</dt><dd class="${m.cls}">${esc(m.text)}</dd>` : ""}
+      ${fact("Who's doing it", pj.who)}
+      ${related.length ? `<dt>Equipment</dt><dd>${related.map((it) => `<button class="btn link" data-act="open-item" data-id="${it.id}">${esc(itemName(it))}</button>`).join(" ")}</dd>` : ""}
+      ${safeUrl(pj.url) ? `<dt>Link</dt><dd><a href="${esc(pj.url)}" target="_blank" rel="noopener">${esc(linkText(pj.url))}</a></dd>` : ""}
+      ${fact("Description", pj.description, "pre")}${fact("Notes", pj.notes, "pre")}
+    </dl>
+    ${checklist(pj, "steps", "Steps", "Add a step, like Shut off water")}
+    ${checklist(pj, "materials", "Materials & shopping list", "Add something to buy, like 2 ball valves 1/2\"")}
+    <div class="sub"><span>Progress log</span><button class="btn small" data-act="new-log" data-project="${id}">Add entry</button></div>
+    ${log.length ? `<div class="log">${log.map((x) => `<div class="entry">
+        <span class="due">${esc(nice(x.date))}</span>
+        <span><span class="what">${esc(x.what)}</span>${x.cost || x.by ? `<br><span class="sm">${esc([x.cost, x.by].filter(Boolean).join(" · "))}</span>` : ""}</span>
+        <button class="btn small" data-act="edit-log" data-log="${esc(x.id)}">Edit</button></div>`).join("")}</div>`
+      : `<div class="empty" style="padding:16px">Log purchases and progress here. Costs you enter add up against the budget.</div>`}
+    <footer><button type="button" class="btn danger" data-act="del-project" data-id="${id}">Delete project</button>
+      <div class="r">${pj.status !== "Done" ? `<button class="btn" data-act="pj-done" data-id="${id}">Mark done</button>` : ""}<button class="btn" data-act="close">Close</button><button class="btn primary" data-act="edit-project" data-id="${id}">Edit</button></div></footer>
+  </div>`, focusSel);
+}
+
+function projectForm(pj = {}) {
+  sheet.dataset.back = ""; sheet.dataset.backcol = "";
+  const sel = (name, id, opts, cur) => `<select id="${id}" name="${name}">${opts.map((o) => `<option${o === cur ? " selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  const items = [...S.items].sort((a, b) => itemName(a).localeCompare(itemName(b)));
+  const ids = pj.itemIds || [];
+  openSheet(`<form id="project-form" data-id="${esc(pj.id || "")}">
+    <h2>${pj.id ? "Edit project" : "Add project"}</h2>
+    <div class="fields">
+      <label class="f full">Project name<input id="j-name" name="name" value="${esc(pj.name)}" placeholder="Replace basement utility sink" required></label>
+      <label class="f">Status${sel("status", "j-status", PJ_STATUS, pj.status || "Planned")}</label>
+      <label class="f">Priority${sel("priority", "j-priority", PJ_PRI, pj.priority || "Medium")}</label>
+      <label class="f">Area of the house<input id="j-area" name="area" list="dl-locs" value="${esc(pj.area)}" placeholder="Basement"></label>
+      <label class="f">Budget<input id="j-budget" name="budget" inputmode="decimal" value="${esc(pj.budget)}" placeholder="$800"></label>
+      <label class="f">Start date<input id="j-start" name="start" type="date" value="${esc(pj.start)}"></label>
+      <label class="f">Target finish<input id="j-target" name="target" type="date" value="${esc(pj.target)}"></label>
+      <label class="f full">Who's doing it<input id="j-who" name="who" value="${esc(pj.who)}" placeholder="Me, or a contractor's name and phone"></label>
+      <label class="f full">Link<input id="j-url" name="url" type="url" value="${esc(pj.url)}" placeholder="https://… (how-to video, plans, quote)"></label>
+      ${items.length ? `<div class="f full">Related equipment<div class="checks">${items.map((it) => `<label><input type="checkbox" name="itemIds" value="${it.id}"${ids.includes(it.id) ? " checked" : ""}>${esc(itemName(it))}${it.location ? ` <span class="hint">· ${esc(it.location)}</span>` : ""}</label>`).join("")}</div></div>` : ""}
+      <label class="f full">Description<textarea id="j-desc" name="description" placeholder="What you're doing and why">${esc(pj.description)}</textarea></label>
+      <label class="f full">Notes<textarea id="j-notes" name="notes" placeholder="Measurements, permit info, ideas">${esc(pj.notes)}</textarea></label>
+    </div>
+    <div class="err" id="form-err" hidden></div>
+    <footer><div class="r"><button type="button" class="btn" data-act="${pj.id ? "open-project" : "close"}" data-id="${esc(pj.id || "")}">Cancel</button><button class="btn primary" type="submit">Save project</button></div></footer>
+  </form>`);
+}
+
 /* ---------- calendar link (Google Calendar, repeating all-day event) ---------- */
 function calLink(t) {
   const it = itemById(t.itemId);
@@ -429,7 +576,7 @@ function calLink(t) {
 
 /* ---------- sheets ---------- */
 const dlg = $("dlg"), sheet = $("sheet");
-function openSheet(html) { sheet.innerHTML = html; if (!dlg.open) dlg.showModal(); const f = sheet.querySelector("input,select,textarea"); if (f) f.focus(); }
+function openSheet(html, focusSel) { sheet.innerHTML = html; if (!dlg.open) dlg.showModal(); const f = focusSel === null ? null : sheet.querySelector(focusSel || "input,select,textarea"); if (f) f.focus(); }
 function closeSheet() { dlg.close(); }
 dlg.addEventListener("click", (e) => { if (e.target === dlg) closeSheet(); });
 
@@ -520,9 +667,9 @@ function itemSheet(id) {
   </div>`);
 }
 
-function logForm(itemId, entry = {}) {
-  sheet.dataset.back = itemId;
-  openSheet(`<form id="log-form" data-item="${esc(itemId)}" data-log="${esc(entry.id || "")}">
+function logForm(itemId, entry = {}, col = "items") {
+  sheet.dataset.back = itemId; sheet.dataset.backcol = col;
+  openSheet(`<form id="log-form" data-owner="${esc(itemId)}" data-col="${col}" data-log="${esc(entry.id || "")}">
     <h2>${entry.id ? "Edit log entry" : "Add log entry"}</h2>
     <div class="fields">
       <label class="f">Date<input id="l-date" name="date" type="date" value="${esc(entry.date || today())}" required></label>
@@ -537,7 +684,7 @@ function logForm(itemId, entry = {}) {
 }
 
 function partForm(x = {}, back = "") {
-  sheet.dataset.back = back;
+  sheet.dataset.back = back; sheet.dataset.backcol = "";
   const opts = [...S.items].sort((a, b) => itemName(a).localeCompare(itemName(b)))
     .map((i) => `<option value="${i.id}"${i.id === x.itemId ? " selected" : ""}>${esc(itemName(i))}</option>`).join("");
   openSheet(`<form id="part-form" data-id="${esc(x.id || "")}">
@@ -588,10 +735,27 @@ document.addEventListener("submit", async (e) => {
     if (await write(() => ref.set(body), id ? "Equipment updated" : "Equipment added")) itemSheet(ref.id);
   }
   if (f.id === "log-form") {
-    const d = formData(f), itemId = f.dataset.item, it = itemById(itemId); if (!it) return closeSheet();
+    const d = formData(f), col = f.dataset.col, ownerId = f.dataset.owner, it = col === "projects" ? projById(ownerId) : itemById(ownerId); if (!it) return closeSheet();
     const lid = f.dataset.log || newId();
     const log = (it.log || []).filter((x) => x.id !== lid).concat({ id: lid, date: d.date, what: d.what, cost: d.cost, by: d.by });
-    if (await write(() => S.db.doc("items/" + itemId).update({ log }), f.dataset.log ? "Entry updated" : "Entry added")) itemSheet(itemId);
+    if (await write(() => S.db.doc(col + "/" + ownerId).update({ log }), f.dataset.log ? "Entry updated" : "Entry added")) backToOwner();
+  }
+  if (f.id === "project-form") {
+    const d = formData(f), prev = id ? projById(id) : null;
+    delete d.itemIds;
+    const body = { ...(prev || {}), ...d, itemIds: new FormData(f).getAll("itemIds"), updatedAt: new Date().toISOString() };
+    body.finished = body.status === "Done" ? (prev?.finished || today()) : "";
+    if (!prev) { body.steps = []; body.materials = []; body.log = []; body.createdAt = body.updatedAt; }
+    delete body.id;
+    const ref = id ? S.db.doc("projects/" + id) : S.db.collection("projects").doc();
+    if (await write(() => ref.set(body), id ? "Project updated" : "Project added")) projectSheet(ref.id);
+  }
+  if (f.classList.contains("pj-add")) {
+    const pid = f.closest("[data-project]")?.dataset.project, pj = projById(pid), key = f.dataset.list;
+    const text = f.elements.text.value.trim(); if (!pj || !text) return;
+    const arr = [...(pj[key] || []), { id: newId(), text, done: false }];
+    if (await write(() => S.db.doc("projects/" + pid).update({ [key]: arr }))) projectSheet(pid, "#add-" + key);
+    return;
   }
   if (f.id === "part-form") {
     const d = formData(f), prev = id ? S.parts.find((x) => x.id === id) : null;
@@ -624,10 +788,10 @@ function arm(btn, label) {
 
 document.addEventListener("click", async (e) => {
   const tab = e.target.closest("[data-view]");
-  if (tab) { S.view = tab.dataset.view; for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-selected", b === tab); for (const v of ["upcoming", "items", "parts"]) $("view-" + v).hidden = S.view !== v; return; }
+  if (tab) { S.view = tab.dataset.view; for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-selected", b === tab); for (const v of ["upcoming", "items", "parts", "projects"]) $("view-" + v).hidden = S.view !== v; return; }
   const el = e.target.closest("[data-act]"); if (!el) return;
   const act = el.dataset.act, id = el.dataset.id;
-  if (!["del-item", "del-task", "del-log", "del-part"].includes(act) && armed) { armed.classList.remove("armed"); armed.textContent = armed.dataset.label; armed = null; }
+  if (!["del-item", "del-task", "del-log", "del-part", "del-project"].includes(act) && armed) { armed.classList.remove("armed"); armed.textContent = armed.dataset.label; armed = null; }
   const inItem = el.closest("[data-item]")?.dataset.item;
   switch (act) {
     case "close": return closeSheet();
@@ -636,14 +800,39 @@ document.addEventListener("click", async (e) => {
     case "open-item": sheet.dataset.back = ""; return itemSheet(id);
     case "new-task": sheet.dataset.back = el.dataset.item || ""; return taskForm({}, el.dataset.item || "");
     case "edit-task": { const back = inItem || ""; const t = S.tasks.find((x) => x.id === id); sheet.dataset.back = back; return t && taskForm(t); }
-    case "new-log": return logForm(el.dataset.item);
-    case "edit-log": { const it = itemById(inItem); const x = it && (it.log || []).find((l) => l.id === el.dataset.log); return x && logForm(inItem, x); }
-    case "back-item": return sheet.dataset.back ? itemSheet(sheet.dataset.back) : closeSheet();
+    case "new-log": return el.dataset.project ? logForm(el.dataset.project, {}, "projects") : logForm(el.dataset.item);
+    case "edit-log": {
+      const inProj = el.closest("[data-project]")?.dataset.project;
+      const owner = inProj ? projById(inProj) : itemById(inItem);
+      const x = owner && (owner.log || []).find((l) => l.id === el.dataset.log);
+      return x && logForm(owner.id, x, inProj ? "projects" : "items");
+    }
+    case "back-item": return backToOwner();
     case "del-log": {
       if (!arm(el, "Tap again to delete")) return;
       armed = null;
-      const f = $("log-form"), itemId = f.dataset.item, it = itemById(itemId);
-      if (it && await write(() => S.db.doc("items/" + itemId).update({ log: (it.log || []).filter((x) => x.id !== f.dataset.log) }), "Entry deleted")) itemSheet(itemId);
+      const f = $("log-form"), col = f.dataset.col, ownerId = f.dataset.owner, it = col === "projects" ? projById(ownerId) : itemById(ownerId);
+      if (it && await write(() => S.db.doc(col + "/" + ownerId).update({ log: (it.log || []).filter((x) => x.id !== f.dataset.log) }), "Entry deleted")) backToOwner();
+      return;
+    }
+    case "new-project": return projectForm();
+    case "open-project": return projectSheet(id);
+    case "edit-project": return projectForm(projById(id));
+    case "pj-done": {
+      if (await write(() => S.db.doc("projects/" + id).update({ status: "Done", finished: today() }), "Project marked done")) projectSheet(id);
+      return;
+    }
+    case "pj-toggle": case "pj-del": {
+      const pid = el.closest("[data-project]")?.dataset.project, pj = projById(pid); if (!pj) return;
+      const key = el.dataset.list, cid = el.dataset.cid;
+      const arr = act === "pj-del" ? (pj[key] || []).filter((x) => x.id !== cid) : (pj[key] || []).map((x) => x.id === cid ? { ...x, done: el.checked } : x);
+      if (await write(() => S.db.doc("projects/" + pid).update({ [key]: arr }))) projectSheet(pid);
+      return;
+    }
+    case "del-project": {
+      if (!arm(el, "Tap again to delete")) return;
+      armed = null;
+      if (await write(() => S.db.doc("projects/" + id).delete(), "Project deleted")) closeSheet();
       return;
     }
     case "new-part": return partForm({});
@@ -698,6 +887,7 @@ document.addEventListener("click", async (e) => {
         for (const t of S.tasks.filter((t) => t.example)) await S.db.doc("tasks/" + t.id).delete();
         for (const i of S.items.filter((i) => i.example)) await S.db.doc("items/" + i.id).delete();
         for (const x of S.parts.filter((x) => x.example)) await S.db.doc("parts/" + x.id).delete();
+        for (const x of S.projects.filter((x) => x.example)) await S.db.doc("projects/" + x.id).delete();
       }, "Examples removed");
       return;
     }
@@ -733,6 +923,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".row.clickable")) { e.preventDefault(); e.target.click(); }
 });
 for (const id of ["q", "f-type", "f-loc"]) $(id).addEventListener("input", () => renderItems(S.loaded.items && S.loaded.tasks));
+for (const id of ["jq", "f-jstatus"]) $(id).addEventListener("input", () => renderProjects(S.loaded.items && S.loaded.tasks));
 for (const id of ["pq", "f-pcat"]) $(id).addEventListener("input", () => renderParts(S.loaded.items && S.loaded.tasks));
 
 function saveFile(filename, text, type) {
@@ -758,17 +949,17 @@ $("restore-file").addEventListener("change", async (e) => {
   try { data = JSON.parse(await f.text()); } catch {}
   const ok = data && data.app === "homebox" && data.items && typeof data.items === "object" && data.tasks && typeof data.tasks === "object";
   if (!ok) { toast("That file isn't a Homebox backup."); return; }
-  pendingRestore = { items: data.items, tasks: data.tasks, parts: data.parts || {}, asFile: S.openingFile ? f.name : "" };
+  pendingRestore = { items: data.items, tasks: data.tasks, parts: data.parts || {}, projects: data.projects || {}, asFile: S.openingFile ? f.name : "" };
   sheet.dataset.back = "";
   if (S.openingFile) {
     S.openingFile = false;
     return openSheet(`<div><h2>Open data file</h2>
-    <p><b>${esc(f.name)}</b> has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks${data.parts ? ` and ${Object.keys(data.parts).length} parts` : ""}.</p>
+    <p><b>${esc(f.name)}</b> has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks${data.parts ? `, ${Object.keys(data.parts).length} parts` : ""}${data.projects ? `, ${Object.keys(data.projects).length} projects` : ""}.</p>
     <p>Opening it replaces what's in Homebox in this browser with the file's contents. From then on, use <b>Save to file</b> to keep the file up to date.</p>
     <footer><div class="r"><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="do-restore" id="btn-do-open">Open file</button></div></footer></div>`);
   }
   openSheet(`<div><h2>Restore from backup</h2>
-    <p>This backup from ${esc(data.exportedAt ? nice(data.exportedAt.slice(0, 10)) : "an earlier date")} has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks${data.parts ? ` and ${Object.keys(data.parts).length} parts` : ""}.</p>
+    <p>This backup from ${esc(data.exportedAt ? nice(data.exportedAt.slice(0, 10)) : "an earlier date")} has ${Object.keys(data.items).length} items and ${Object.keys(data.tasks).length} maintenance tasks${data.parts ? `, ${Object.keys(data.parts).length} parts` : ""}${data.projects ? `, ${Object.keys(data.projects).length} projects` : ""}.</p>
     <p>Restoring replaces everything currently in Homebox on this device.</p>
     <footer><div class="r"><button class="btn" data-act="close">Cancel</button><button class="btn danger" data-act="do-restore" id="btn-do-restore">Replace my data</button></div></footer></div>`);
 });
@@ -781,9 +972,9 @@ const CAN_FS = typeof window.showSaveFilePicker === "function" && typeof window.
 const FILE = { handle: null, status: "off", savedAt: null, timer: null, queue: Promise.resolve() };
 const FILE_TYPES = [{ description: "Homebox data", accept: { "application/json": [".json"] } }];
 const stable = (v) => Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stable(v[k])).join(",")}}` : JSON.stringify(v ?? null);
-function sigOf(d) { const s = stable({ items: d.items || {}, tasks: d.tasks || {}, parts: d.parts || {} }); let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36) + "." + s.length; }
+function sigOf(d) { const s = stable({ items: d.items || {}, tasks: d.tasks || {}, parts: d.parts || {}, projects: d.projects || {} }); let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36) + "." + s.length; }
 const localSig = () => sigOf(localDb.raw());
-const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks, parts: r.parts }, null, 2); };
+const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks, parts: r.parts, projects: r.projects }, null, 2); };
 function parseHomebox(text) {
   try { const d = JSON.parse(text); return d && d.app === "homebox" && d.items && typeof d.items === "object" && d.tasks && typeof d.tasks === "object" ? d : null; } catch { return null; }
 }
@@ -920,21 +1111,21 @@ window.addEventListener("beforeunload", (e) => {
 
 /* ---------- local storage (this browser only) ---------- */
 const KEY = "homebox:v1", META = "homebox:meta";
-const blank = () => ({ items: {}, tasks: {}, parts: {} });
-function readStore() { try { const d = JSON.parse(localStorage.getItem(KEY)); return d && d.items && d.tasks ? { parts: {}, ...d } : null; } catch { return null; } }
+const blank = () => ({ items: {}, tasks: {}, parts: {}, projects: {} });
+function readStore() { try { const d = JSON.parse(localStorage.getItem(KEY)); return d && d.items && d.tasks ? { parts: {}, projects: {}, ...d } : null; } catch { return null; } }
 function meta() { try { return JSON.parse(localStorage.getItem(META)) || {}; } catch { return {}; } }
 function setMeta(patch) { try { localStorage.setItem(META, JSON.stringify({ ...meta(), ...patch })); } catch {} }
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const localDb = (() => {
   let store = readStore() || blank();
-  const listeners = { items: [], tasks: [], parts: [] };
+  const listeners = { items: [], tasks: [], parts: [], projects: [] };
   const emit = (col) => { const docs = Object.entries(store[col]).map(([id, d]) => ({ id, data: () => d })); listeners[col].forEach((fn) => fn({ docs })); };
   function commit(mutate) {
     const before = JSON.stringify(store);
     mutate();
     try { localStorage.setItem(KEY, JSON.stringify(store)); }
     catch (e) { store = JSON.parse(before); throw e; }
-    emit("items"); emit("tasks"); emit("parts");
+    emit("items"); emit("tasks"); emit("parts"); emit("projects");
     onCommit.forEach((fn) => fn());
   }
   const ref = (col, id) => ({
@@ -943,12 +1134,12 @@ const localDb = (() => {
     async update(d) { commit(() => { store[col][id] = { ...store[col][id], ...JSON.parse(JSON.stringify(d)) }; }); },
     async delete() { commit(() => { delete store[col][id]; }); },
   });
-  window.addEventListener("storage", (e) => { if (e.key === KEY) { store = readStore() || blank(); emit("items"); emit("tasks"); emit("parts"); } });
+  window.addEventListener("storage", (e) => { if (e.key === KEY) { store = readStore() || blank(); emit("items"); emit("tasks"); emit("parts"); emit("projects"); } });
   return {
     doc(path) { const [col, id] = path.split("/"); return ref(col, id); },
     collection(col) { return { doc: (id) => ref(col, id || newId()), onSnapshot(fn) { listeners[col].push(fn); setTimeout(() => emit(col)); return () => {}; } }; },
     raw: () => JSON.parse(JSON.stringify(store)),
-    async replace(next) { commit(() => { store = { items: { ...next.items }, tasks: { ...next.tasks }, parts: { ...(next.parts || {}) } }; }); },
+    async replace(next) { commit(() => { store = { items: { ...next.items }, tasks: { ...next.tasks }, parts: { ...(next.parts || {}) }, projects: { ...(next.projects || {}) } }; }); },
     isNew: () => readStore() === null,
   };
 })();
@@ -970,7 +1161,14 @@ function seedExamples() {
     "ex-pex": { example: true, name: "PEX elbow", category: "Plumbing", size: "1/2\" crimp, brass", qty: "6", unit: "pcs", stored: "Garage, bin 3", source: "Menards" },
     "ex-filter-stock": { example: true, name: "Furnace filter", category: "HVAC", size: "16x25x1 MERV 8", qty: "2", unit: "pcs", stored: "Basement shelf", itemId: "ex-furnace" },
   };
-  return localDb.replace({ items, tasks, parts });
+  const projects = {
+    "ex-laundry": { example: true, name: "Laundry nook in the basement", status: "In progress", priority: "Medium", area: "Basement", start: d(-21), target: d(40), budget: "$1,200", who: "Me, electrician for the new circuit",
+      description: "Move the washer and dryer next to the utility sink and add shelving.",
+      steps: [{ id: "s1", text: "Run a new 20A circuit", done: true }, { id: "s2", text: "Install utility sink", done: false }, { id: "s3", text: "Build shelves", done: false }],
+      materials: [{ id: "m1", text: "Utility sink and faucet", done: true }, { id: "m2", text: "20 ft of 1/2\" PEX", done: false }, { id: "m3", text: "Shelf brackets (8)", done: false }],
+      log: [{ id: "pl1", date: d(-14), what: "Electrician ran the circuit", cost: "$350", by: "Spark Electric" }, { id: "pl2", date: d(-6), what: "Bought sink and faucet", cost: "$240", by: "Me" }] },
+  };
+  return localDb.replace({ items, tasks, parts, projects });
 }
 
 /* ---------- boot ---------- */
@@ -981,6 +1179,7 @@ render();
   localDb.collection("items").onSnapshot((s) => { S.items = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.items = true; render(); refreshSheet(); });
   localDb.collection("tasks").onSnapshot((s) => { S.tasks = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.tasks = true; render(); refreshSheet(); });
   localDb.collection("parts").onSnapshot((s) => { S.parts = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
+  localDb.collection("projects").onSnapshot((s) => { S.projects = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
   try { navigator.storage?.persist?.(); } catch {}
   try { if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {}); } catch {}
   if (meta().fileMode === "auto") {
@@ -992,8 +1191,15 @@ render();
   }
 })();
 function refreshSheet() {
-  const open = dlg.open && sheet.querySelector("div[data-item]");
-  if (open) itemSheet(open.dataset.item);
+  if (!dlg.open) return;
+  const item = sheet.querySelector("div[data-item]"), pj = sheet.querySelector("div[data-project]");
+  if (item) itemSheet(item.dataset.item);
+  else if (pj && !sheet.contains(document.activeElement)) projectSheet(pj.dataset.project);
+}
+function backToOwner() {
+  const id = sheet.dataset.back;
+  if (!id) return closeSheet();
+  return sheet.dataset.backcol === "projects" ? projectSheet(id) : itemSheet(id);
 }
 </script>
 </body>
