@@ -14,6 +14,9 @@ const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data
 const DATA_FILE = path.join(DATA_DIR, "homebox.json");
 const AUTH_FILE = path.join(DATA_DIR, "auth.json");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
+const PHOTO_DIR = path.join(DATA_DIR, "photos");
+const MAX_PHOTO = 8 * 1024 * 1024;
+const PHOTO_TYPES = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
 const MAX_BODY = 5 * 1024 * 1024;
 const KEEP_BACKUPS = 30;
 
@@ -27,11 +30,12 @@ const TYPES = {
 async function readJson(file, fallback) {
   try { return JSON.parse(await fsp.readFile(file, "utf8")); } catch (e) { if (e.code === "ENOENT") return fallback; throw e; }
 }
-async function writeJson(file, value) {
+async function writeFileAtomic(file, data) {
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify(value, null, 2), { mode: 0o600 });
+  await fsp.writeFile(tmp, data, { mode: 0o600 });
   await fsp.rename(tmp, file);
 }
+const writeJson = (file, value) => writeFileAtomic(file, JSON.stringify(value, null, 2));
 async function backup(doc) {
   await fsp.mkdir(BACKUP_DIR, { recursive: true });
   const day = new Date().toISOString().slice(0, 10);
@@ -83,10 +87,27 @@ function readBody(req) {
     req.on("error", reject);
   });
 }
+function readRaw(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks = [];
+    req.on("data", (c) => { size += c.length; if (size > limit) { reject(Object.assign(new Error("That photo is too large."), { status: 413 })); req.destroy(); } else chunks.push(c); });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+// Photo ids are random hex, so a name can never reach outside PHOTO_DIR.
+async function findPhoto(id) {
+  if (!/^[a-f0-9]{32}$/.test(id || "")) return null;
+  for (const [type, ext] of Object.entries(PHOTO_TYPES)) {
+    const file = path.join(PHOTO_DIR, id + ext);
+    try { await fsp.access(file); return { file, type }; } catch {}
+  }
+  return null;
+}
 const validData = (d) => d && typeof d === "object" && ["items", "tasks"].every((k) => d[k] && typeof d[k] === "object" && !Array.isArray(d[k]));
 
 /* ---------- API ---------- */
-async function api(req, res, route) {
+async function api(req, res, route, url) {
   const ip = req.socket.remoteAddress || "";
   if (route === "status" && req.method === "GET") {
     const auth = await loadAuth();
@@ -139,6 +160,24 @@ async function api(req, res, route) {
       send(res, 200, { version: next.version, updatedAt: next.updatedAt });
     });
   }
+  if (route === "photo" && req.method === "POST") {
+    const ext = PHOTO_TYPES[(req.headers["content-type"] || "").split(";")[0].trim()];
+    if (!ext) return send(res, 415, { error: "Use a JPEG, PNG or WebP image." });
+    const buf = await readRaw(req, MAX_PHOTO);
+    if (!buf.length) return send(res, 400, { error: "The photo was empty." });
+    const id = crypto.randomBytes(16).toString("hex");
+    await fsp.mkdir(PHOTO_DIR, { recursive: true });
+    await writeFileAtomic(path.join(PHOTO_DIR, id + ext), buf);
+    return send(res, 200, { id });
+  }
+  if (route === "photo" && (req.method === "GET" || req.method === "DELETE")) {
+    const hit = await findPhoto(url.searchParams.get("id"));
+    if (!hit) return send(res, 404, { error: "Not found" });
+    if (req.method === "DELETE") { await fsp.unlink(hit.file); return send(res, 200, { ok: true }); }
+    const buf = await fsp.readFile(hit.file);
+    res.writeHead(200, { "Content-Type": hit.type, "Content-Length": buf.length, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" });
+    return res.end(buf);
+  }
   return send(res, 404, { error: "Not found" });
 }
 
@@ -169,7 +208,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost");
     const m = url.pathname.match(/^\/api\/([a-z]+)$/);
-    if (m) return await api(req, res, m[1]);
+    if (m) return await api(req, res, m[1], url);
     if (url.pathname.startsWith("/api/")) return send(res, 404, { error: "Not found" });
     return await serveStatic(req, res, url.pathname);
   } catch (e) {

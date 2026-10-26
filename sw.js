@@ -1,7 +1,7 @@
 // Lets Homebox open without an internet connection.
 // The page itself is fetched fresh when online (so updates show up) and falls back to the saved copy offline.
-const CACHE = "homebox-v2";
-const SHELL = ["./", "index.html", "manifest.webmanifest", "icon.svg", "icon-512.png", "apple-touch-icon.png"];
+const CACHE = "homebox-v3";
+const SHELL = ["./", "index.html", "qrcode.js", "manifest.webmanifest", "icon.svg", "icon-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

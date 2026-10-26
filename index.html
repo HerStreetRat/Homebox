@@ -143,6 +143,21 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
 .datafoot .actions { gap: 6px }
 @media (max-width: 420px) { nav.tabs button { padding: 10px 7px; font-size: 15px } }
 @media (max-width: 480px) { header.top .actions { width: 100% } header.top .actions .btn { flex: 1 1 auto; padding: 8px 10px; font-size: 14px } }
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px }
+.photos button { padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; aspect-ratio: 1; background: var(--sunk); cursor: pointer }
+.photos img { width: 100%; height: 100%; object-fit: cover; display: block }
+.photos .missing img { visibility: hidden }
+.photo-full { display: block; width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; background: var(--sunk); margin-top: 8px }
+.qr { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; margin: 8px 0 }
+.qr svg { width: 180px; height: 180px; background: #fff; padding: 6px; border-radius: 6px }
+#print-area { display: none }
+@media print {
+  body.printing { background: #fff }
+  body.printing > *:not(#print-area) { display: none !important }
+  body.printing #print-area { display: grid; grid-template-columns: repeat(3, 1fr); gap: .2in; color: #000 }
+  .label { break-inside: avoid; border: 1px dashed #aaa; padding: .1in; text-align: center; font: 10pt sans-serif; display: flex; flex-direction: column; align-items: center; gap: 2px }
+  .label svg { width: 1.5in; height: 1.5in }
+}
 </style>
 </head>
 <body>
@@ -183,6 +198,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
       <input id="q" type="search" placeholder="Search brand, product, specs, parts…" aria-label="Search equipment">
       <select id="f-type" aria-label="Filter by type"><option value="">All types</option></select>
       <select id="f-loc" aria-label="Filter by location"><option value="">All locations</option></select>
+      <button class="btn" data-act="print-labels" id="btn-print-labels">Print QR labels</button>
     </div>
     <div id="items-list"></div>
   </section>
@@ -203,8 +219,10 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
 
   <footer class="datafoot" id="datafoot"></footer>
   <input type="file" id="restore-file" accept=".json,application/json" hidden>
+  <input type="file" id="photo-file" accept="image/*" multiple hidden>
 </div>
 
+<div id="print-area"></div>
 <dialog id="dlg"><div class="sheet" id="sheet"></div></dialog>
 <datalist id="dl-types"></datalist>
 <datalist id="dl-locs"></datalist>
@@ -212,6 +230,7 @@ dl.facts dd.pre { white-space: pre-line } dl.facts a { color: var(--accent) }
 <datalist id="dl-pcats"></datalist>
 <datalist id="dl-units"></datalist>
 
+<script src="qrcode.js"></script>
 <script>
 const DEFAULT_TYPES = ["Appliance", "HVAC", "Plumbing", "Electrical", "Power tool", "Hand tool", "Yard & garden", "Vehicle", "Electronics", "Part / supply"];
 const DEFAULT_LOCS = ["Basement", "Garage", "Kitchen", "Laundry room", "Utility closet", "Attic", "Shed", "Yard"];
@@ -654,6 +673,9 @@ function itemSheet(id) {
       ${fact("Receipt", it.receipt)}
       ${fact("Notes", it.notes)}
     </dl>
+    ${SRV.on ? `<div class="sub"><span>Photos</span><button class="btn small" data-act="add-photo" data-id="${id}" id="btn-add-photo">Add photos</button></div>
+    ${(it.photos || []).length ? `<div class="photos">${it.photos.map((p) => `<button data-act="view-photo" data-id="${id}" data-photo="${esc(p.id)}" aria-label="Open photo"><img data-photo="${esc(p.id)}" alt=""></button>`).join("")}</div>`
+      : `<div class="empty" style="padding:16px">Add photos of the item, its model and serial sticker, or the receipt.</div>`}` : ""}
     <div class="sub"><span>Maintenance</span><button class="btn small" data-act="new-task" data-item="${id}">Add</button></div>
     ${tasks.length ? `<div class="list">${tasks.map((t) => taskRow(t, false)).join("")}</div>` : `<div class="empty" style="padding:16px">No maintenance set for this item.</div>`}
     <div class="sub"><span>Repair &amp; service log</span><button class="btn small" data-act="new-log" data-item="${id}">Add entry</button></div>
@@ -664,8 +686,9 @@ function itemSheet(id) {
       : `<div class="empty" style="padding:16px">No repairs or service logged yet. Marking a maintenance task done adds an entry here automatically.</div>`}
     ${parts.length ? `<div class="sub"><span>Spare parts on hand</span></div><div class="log">${parts.map((x) => `<div class="entry"><span class="due">${esc([x.qty, x.unit].filter((v) => v !== "" && v != null).join(" ") || "–")}</span><span class="what">${esc(x.name)}${x.stored ? `<br><span class="sm">Kept in ${esc(x.stored)}</span>` : ""}</span><button class="btn small" data-act="edit-part" data-id="${x.id}" data-back="${id}">Edit</button></div>`).join("")}</div>` : ""}
     <footer><button type="button" class="btn danger" data-act="del-item" data-id="${id}">Delete item</button>
-      <div class="r"><button class="btn" data-act="close">Close</button><button class="btn primary" data-act="edit-item" data-id="${id}">Edit</button></div></footer>
+      <div class="r"><button class="btn" data-act="qr-item" data-id="${id}" id="btn-qr">QR label</button><button class="btn" data-act="close">Close</button><button class="btn primary" data-act="edit-item" data-id="${id}">Edit</button></div></footer>
   </div>`);
+  hydratePhotos(sheet);
 }
 
 function logForm(itemId, entry = {}, col = "items") {
@@ -924,6 +947,11 @@ document.addEventListener("click", async (e) => {
     case "srv-signin": return srvFetch("status").then((r) => srvAuthSheet(r.body?.configured === false ? "setup" : "login")).catch(() => toast("Can't reach your home server right now."));
     case "srv-signout": if (!arm(el, "Tap again to sign out")) return; armed = null; return srvSignOut();
     case "srv-use-server": return srvResolve("server");
+    case "add-photo": S.photoItem = id; return $("photo-file").click();
+    case "view-photo": return photoSheet(id, el.dataset.photo);
+    case "del-photo": if (!arm(el, "Tap again to delete")) return; armed = null; return deletePhoto(id, el.dataset.photo);
+    case "qr-item": return qrSheet(id);
+    case "print-labels": return printLabels(id ? [id] : [...document.querySelectorAll("#items-list [data-act=open-item]")].map((x) => x.dataset.id));
     case "srv-use-local": return srvResolve("local");  }
 });
 document.addEventListener("keydown", (e) => {
@@ -1190,6 +1218,7 @@ async function srvAuthSubmit(f) {
     srvSetToken(r.body.token); closeSheet();
     toast(setup ? "Password set. Saving to your home server." : "Signed in");
     await srvPull();
+    openFromHash();
   } catch { fail("Can't reach your home server right now."); }
   finally { btn.disabled = false; }
 }
@@ -1256,6 +1285,112 @@ function srvResolve(which) {
 setInterval(() => { if (!document.hidden) srvPull(); }, 30000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) srvPull(); });
 window.addEventListener("online", () => srvPull());
+
+/* ---------- photos (home server only) and QR labels ---------- */
+const PHOTO_URLS = new Map();
+async function photoUrl(id) {
+  if (PHOTO_URLS.has(id)) return PHOTO_URLS.get(id);
+  const res = await fetch("api/photo?id=" + encodeURIComponent(id), { headers: { Authorization: "Bearer " + srvToken() } });
+  if (!res.ok) throw new Error();
+  const url = URL.createObjectURL(await res.blob());
+  PHOTO_URLS.set(id, url);
+  return url;
+}
+function hydratePhotos(root) {
+  for (const img of root.querySelectorAll("img[data-photo]")) {
+    photoUrl(img.dataset.photo).then((u) => { img.src = u; }).catch(() => { img.alt = "Photo not available right now"; img.parentElement.classList.add("missing"); });
+  }
+}
+// Phone photos are often 5+ MB; shrink them before upload.
+function shrinkImage(file, max = 1600) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob((b) => b ? resolve(b) : reject(new Error()), "image/jpeg", 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error()); };
+    img.src = url;
+  });
+}
+async function addPhotos(itemId, files) {
+  if (!SRV.on || SRV.status === "signed-out") return srvSignedOut();
+  if (files.length > 1) toast(`Adding ${files.length} photos…`);
+  let added = 0;
+  for (const f of files) {
+    try {
+      const blob = await shrinkImage(f);
+      const res = await fetch("api/photo", { method: "POST", headers: { "Content-Type": "image/jpeg", Authorization: "Bearer " + srvToken() }, body: blob });
+      if (res.status === 401) { srvSignedOut(); break; }
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error);
+      PHOTO_URLS.set(body.id, URL.createObjectURL(blob));
+      const it = itemById(itemId); if (!it) break;
+      await S.db.doc("items/" + itemId).update({ photos: [...(it.photos || []), { id: body.id, added: today() }] });
+      added++;
+    } catch { toast(SRV.status === "offline" ? "Photos need a connection to your home server." : `Couldn't add ${f.name || "that photo"}.`); }
+  }
+  if (added) toast(added === 1 ? "Photo added" : `${added} photos added`);
+}
+$("photo-file").addEventListener("change", (e) => {
+  const files = [...e.target.files]; e.target.value = "";
+  if (files.length && S.photoItem) addPhotos(S.photoItem, files);
+});
+function photoSheet(itemId, photoId) {
+  const it = itemById(itemId), p = (it?.photos || []).find((x) => x.id === photoId);
+  if (!p) return itemSheet(itemId);
+  openSheet(`<div data-photo-view="${esc(photoId)}">
+    <h2>${esc(itemName(it))}</h2>
+    <img class="photo-full" data-photo="${esc(photoId)}" alt="Photo of ${esc(itemName(it))}">
+    ${p.added ? `<p class="hint">Added ${esc(nice(p.added))}</p>` : ""}
+    <footer><button type="button" class="btn danger" data-act="del-photo" data-id="${esc(itemId)}" data-photo="${esc(photoId)}">Delete photo</button>
+      <div class="r"><button class="btn" data-act="open-item" data-id="${esc(itemId)}">Back</button></div></footer>
+  </div>`, null);
+  hydratePhotos(sheet);
+}
+async function deletePhoto(itemId, photoId) {
+  const it = itemById(itemId); if (!it) return;
+  if (await write(() => S.db.doc("items/" + itemId).update({ photos: (it.photos || []).filter((x) => x.id !== photoId) }), "Photo deleted")) {
+    fetch("api/photo?id=" + encodeURIComponent(photoId), { method: "DELETE", headers: { Authorization: "Bearer " + srvToken() } }).catch(() => {});
+    itemSheet(itemId);
+  }
+}
+
+const itemLink = (id) => location.origin + location.pathname + "#item=" + encodeURIComponent(id);
+function qrSvg(text) { const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
+function qrSheet(id) {
+  const it = itemById(id); if (!it) return;
+  openSheet(`<div>
+    <h2>QR label</h2>
+    <div class="qr">${qrSvg(itemLink(id))}<b>${esc(itemName(it))}</b>${it.location ? `<span class="hint">${esc(it.location)}</span>` : ""}</div>
+    <p class="hint">Stick it on the ${esc(it.product || "item")}. Scanning it with your phone's camera opens this page. It works on any device that can reach Homebox at <b>${esc(location.host || location.href)}</b>.</p>
+    <footer><div class="r"><button class="btn" data-act="open-item" data-id="${esc(id)}">Back</button><button class="btn primary" data-act="print-labels" data-id="${esc(id)}" id="btn-print-label">Print label</button></div></footer>
+  </div>`, null);
+}
+function printLabels(ids) {
+  const area = $("print-area");
+  area.innerHTML = ids.map(itemById).filter(Boolean).map((it) => `<div class="label">${qrSvg(itemLink(it.id))}<b>${esc(itemName(it))}</b>${it.location ? `<span>${esc(it.location)}</span>` : ""}</div>`).join("");
+  if (!area.innerHTML) return toast("No equipment to print labels for yet.");
+  if (dlg.open) closeSheet();
+  document.body.classList.add("printing");
+  const done = () => { document.body.classList.remove("printing"); area.innerHTML = ""; window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done);
+  window.print();
+}
+// A scanned label opens Homebox at #item=<id>.
+function openFromHash() {
+  const m = location.hash.match(/^#item=(.+)$/); if (!m) return;
+  const id = decodeURIComponent(m[1]);
+  if (dlg.open || !itemById(id)) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  document.querySelector('[data-view="items"]').click();
+  itemSheet(id);
+}
+window.addEventListener("hashchange", openFromHash);
 
 /* ---------- local storage (this browser only) ---------- */
 const KEY = "homebox:v1", META = "homebox:meta";
@@ -1331,6 +1466,7 @@ render();
   try { navigator.storage?.persist?.(); } catch {}
   try { if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {}); } catch {}
   await srvInit(); render();
+  setTimeout(openFromHash);
   if (SRV.on) return;
   if (meta().fileMode === "auto") {
     if (!CAN_FS) { setMeta({ fileMode: "manual" }); return render(); }
