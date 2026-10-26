@@ -1,0 +1,15 @@
+{
+  "name": "Homebox",
+  "short_name": "Homebox",
+  "description": "Home equipment, tools and parts log with maintenance reminders.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F2F3EF",
+  "theme_color": "#2C6A4D",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
