@@ -978,6 +978,7 @@ render();
   localDb.collection("tasks").onSnapshot((s) => { S.tasks = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.tasks = true; render(); refreshSheet(); });
   localDb.collection("parts").onSnapshot((s) => { S.parts = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
   try { navigator.storage?.persist?.(); } catch {}
+  try { if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {}); } catch {}
   if (meta().fileMode === "auto") {
     if (!CAN_FS) { setMeta({ fileMode: "manual" }); return render(); }
     FILE.handle = await fsRecall();

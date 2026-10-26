@@ -30,6 +30,10 @@ Without a data file, your data lives only in this browser on this device. It doe
 - On iPhone, open the page in Safari, tap Share, then **Add to Home Screen**. Safari can clear saved website data after a few weeks without a visit, but it doesn't do that for home-screen apps.
 - Clearing your browser's history and site data erases Homebox, so restore from a backup afterwards.
 
+## Offline
+
+After you've opened Homebox once with an internet connection, it also opens and works offline. Your data is always on your device anyway. The **Add to calendar** and manual links still need a connection. In a Firefox private window, the offline copy isn't kept.
+
 ## Hosting
 
 GitHub Pages serves this repository as-is (Settings → Pages → Deploy from branch → `main` / root). There's no build step: `index.html` is the whole app.
