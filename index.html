@@ -361,7 +361,7 @@ function renderItems(ready) {
     .filter((i) => !q || [i.brand, i.product, i.type, i.location, i.model, i.serial, i.specs, i.parts, i.store, i.service, i.receipt, i.notes, ...(i.log || []).map((x) => x.what + " " + (x.by || ""))].join(" ").toLowerCase().includes(q))
     .sort((a, b) => itemName(a).localeCompare(itemName(b)));
   if (!list.length) { el.innerHTML = `<div class="empty">No items match that search.</div>`; return; }
-  el.innerHTML = `<div class="list">${list.map((i) => {
+  const row = (i) => {
     const w = warranty(i), life = lifespan(i);
     const tasks = S.tasks.filter((t) => t.itemId === i.id);
     const next = tasks.sort((a, b) => a.nextDue.localeCompare(b.nextDue))[0];
@@ -371,14 +371,17 @@ function renderItems(ready) {
         <div class="title">${i.brand ? `<span style="color:var(--muted);font-weight:500">${esc(i.brand)}</span> ` : ""}${esc(i.product || "Untitled item")}${i.example ? '<span class="ex">Example</span>' : ""}</div>
         <div class="meta">
           ${i.type ? `<span class="chip">${esc(i.type)}</span>` : ""}
-          ${i.location ? `<span>${esc(i.location)}</span>` : ""}
           ${i.purchaseDate ? `<span>Bought ${esc(nice(i.purchaseDate))}</span>` : ""}
           ${next ? `<span class="${dueClass(next.nextDue) === "ok" ? "" : "txt-" + dueClass(next.nextDue)}">${esc(next.title)}: ${esc(rel(next.nextDue))}</span>` : ""}
         </div>
       </div>
       <div class="side">${life && life.cls !== "ok" ? `<span class="pill ${life.cls}">${esc(life.text)}</span>` : ""}<span class="pill ${w.cls}">${esc(w.text)}</span></div>
     </div>`;
-  }).join("")}</div>`;
+  };
+  const groups = new Map();
+  for (const i of list) { const k = (i.location || "").trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); }
+  const keys = [...groups.keys()].sort((a, b) => (!a - !b) || a.localeCompare(b));
+  el.innerHTML = keys.map((k) => `<div class="group"><h3>${esc(k || "No location")} · ${groups.get(k).length}</h3><div class="list">${groups.get(k).map(row).join("")}</div></div>`).join("");
 }
 
 function renderParts(ready) {
@@ -582,7 +585,7 @@ document.addEventListener("submit", async (e) => {
     const prev = id ? itemById(id) : null;
     const body = { ...(prev || {}), ...d, createdAt: prev?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString() };
     delete body.id;
-    if (await write(() => ref.set(body), id ? "Item updated" : "Item added")) itemSheet(ref.id);
+    if (await write(() => ref.set(body), id ? "Equipment updated" : "Equipment added")) itemSheet(ref.id);
   }
   if (f.id === "log-form") {
     const d = formData(f), itemId = f.dataset.item, it = itemById(itemId); if (!it) return closeSheet();
@@ -684,7 +687,7 @@ document.addEventListener("click", async (e) => {
       const ok = await write(async () => {
         for (const t of S.tasks.filter((t) => t.itemId === id)) await S.db.doc("tasks/" + t.id).delete();
         await S.db.doc("items/" + id).delete();
-      }, "Item deleted");
+      }, "Equipment deleted");
       if (ok) closeSheet();
       return;
     }
