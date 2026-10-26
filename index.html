@@ -783,6 +783,7 @@ document.addEventListener("submit", async (e) => {
 let armed = null;
 function arm(btn, label) {
   if (armed === btn) return true;
+  if (!matchMedia("(pointer: coarse)").matches) label = label.replace(/\bTap\b/, "Click");
   if (armed) { armed.classList.remove("armed"); armed.textContent = armed.dataset.label; }
   btn.dataset.label = btn.textContent; btn.textContent = label; btn.classList.add("armed"); armed = btn;
   return false;
