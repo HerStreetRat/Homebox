@@ -15,8 +15,10 @@ const DATA_FILE = path.join(DATA_DIR, "homebox.json");
 const AUTH_FILE = path.join(DATA_DIR, "auth.json");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const PHOTO_DIR = path.join(DATA_DIR, "photos");
-const MAX_PHOTO = 8 * 1024 * 1024;
-const PHOTO_TYPES = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
+const MAX_PHOTO = 8 * 1024 * 1024, MAX_DOC = 25 * 1024 * 1024;
+// Photos and documents (manuals, receipts) share one folder.
+const PHOTO_TYPES = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "application/pdf": ".pdf" };
+const OFFSITE_STAMP = path.join(DATA_DIR, "offsite-backup.stamp");
 const MAX_BODY = 5 * 1024 * 1024;
 const KEEP_BACKUPS = 30;
 
@@ -104,6 +106,17 @@ async function findPhoto(id) {
   }
   return null;
 }
+// Documents open in a new tab, where no sign-in header can be sent, so each one gets
+// its own key (an HMAC of its id) that works only for that file.
+let fileSecret = null;
+async function fileKey(id) {
+  if (!fileSecret) {
+    const f = path.join(DATA_DIR, "file-secret");
+    try { fileSecret = (await fsp.readFile(f, "utf8")).trim(); }
+    catch { fileSecret = crypto.randomBytes(32).toString("hex"); await writeFileAtomic(f, fileSecret); }
+  }
+  return crypto.createHmac("sha256", fileSecret).update(id).digest("hex").slice(0, 32);
+}
 const validData = (d) => d && typeof d === "object" && ["items", "tasks"].every((k) => d[k] && typeof d[k] === "object" && !Array.isArray(d[k]));
 
 /* ---------- API ---------- */
@@ -137,6 +150,15 @@ async function api(req, res, route, url) {
     }
     return serial(async () => send(res, 200, { token: await issueToken(await loadAuth(), body.device) }));
   }
+  if (route === "photo" && req.method === "GET" && url.searchParams.get("k")) {
+    const id = url.searchParams.get("id") || "", k = Buffer.from(url.searchParams.get("k"));
+    const want = Buffer.from(await fileKey(id));
+    const hit = k.length === want.length && crypto.timingSafeEqual(k, want) ? await findPhoto(id) : null;
+    if (!hit) return send(res, 404, { error: "Not found" });
+    const buf = await fsp.readFile(hit.file);
+    res.writeHead(200, { "Content-Type": hit.type, "Content-Length": buf.length, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" });
+    return res.end(buf);
+  }
   if (!(await isAuthed(req))) return send(res, 401, { error: "Sign in first." });
 
   if (route === "logout" && req.method === "POST") {
@@ -162,13 +184,13 @@ async function api(req, res, route, url) {
   }
   if (route === "photo" && req.method === "POST") {
     const ext = PHOTO_TYPES[(req.headers["content-type"] || "").split(";")[0].trim()];
-    if (!ext) return send(res, 415, { error: "Use a JPEG, PNG or WebP image." });
-    const buf = await readRaw(req, MAX_PHOTO);
+    if (!ext) return send(res, 415, { error: "Use a PDF, or a JPEG, PNG or WebP image." });
+    const buf = await readRaw(req, ext === ".pdf" ? MAX_DOC : MAX_PHOTO);
     if (!buf.length) return send(res, 400, { error: "The photo was empty." });
     const id = crypto.randomBytes(16).toString("hex");
     await fsp.mkdir(PHOTO_DIR, { recursive: true });
     await writeFileAtomic(path.join(PHOTO_DIR, id + ext), buf);
-    return send(res, 200, { id });
+    return send(res, 200, { id, key: await fileKey(id) });
   }
   if (route === "photo" && (req.method === "GET" || req.method === "DELETE")) {
     const hit = await findPhoto(url.searchParams.get("id"));
@@ -177,6 +199,23 @@ async function api(req, res, route, url) {
     const buf = await fsp.readFile(hit.file);
     res.writeHead(200, { "Content-Type": hit.type, "Content-Length": buf.length, "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff" });
     return res.end(buf);
+  }
+  if (route === "health" && req.method === "GET") {
+    const st = await fsp.statfs(DATA_DIR).catch(() => null);
+    const backups = (await fsp.readdir(BACKUP_DIR).catch(() => [])).filter((f) => /^homebox-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
+    const offsite = await fsp.stat(OFFSITE_STAMP).catch(() => null);
+    let files = 0, bytes = 0;
+    for (const f of await fsp.readdir(PHOTO_DIR).catch(() => [])) {
+      const fst = await fsp.stat(path.join(PHOTO_DIR, f)).catch(() => null);
+      if (fst?.isFile()) { files++; bytes += fst.size; }
+    }
+    return send(res, 200, {
+      ok: true, now: new Date().toISOString(), uptime: Math.round(process.uptime()),
+      disk: st ? { free: st.bavail * st.bsize, total: st.blocks * st.bsize } : null,
+      serverBackup: backups.length ? backups[backups.length - 1].slice(8, 18) : null,
+      offsiteBackup: offsite ? offsite.mtime.toISOString() : null,
+      files: { count: files, bytes },
+    });
   }
   return send(res, 404, { error: "Not found" });
 }

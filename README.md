@@ -14,6 +14,8 @@ It's a single web page with no server and no account. Everything you enter is sa
 - **Warranty details:** whether it's registered, a link to the warranty or registration page, and where the receipt is.
 - **Projects:** bigger jobs with status, priority, area, dates, budget, who's doing it, a link and related equipment. Each project has a steps checklist, a materials and shopping list, and a progress log. Costs in the log add up against the budget.
 - **QR labels:** each item has a QR label, and **Print QR labels** on the Equipment tab prints a sheet of them. Scanning one opens that item (`#item=<id>`). The label points at whatever address you printed it from.
+- **Spending:** totals from equipment prices, repair-log costs and project costs, by year, by item or project, and by area of the house.
+- **Inventory report:** a printable list of all equipment by room, with photos, serial numbers, prices and warranty details, for insurance. Use your browser's Save as PDF to keep a copy.
 - **Parts & supplies:** a separate list for spare fittings, pipe, wire, fasteners and so on, with size, quantity on hand, where it's kept, and what it's for.
 
 ## Keep your data in a file (recommended on a computer)
@@ -46,7 +48,9 @@ PORT=8080 DATA_DIR=/path/to/data node server/server.js
 
 The first time you open it, Homebox asks you to choose a password. Each new device asks for it once. Changes save to the server automatically. If the server can't be reached, changes stay in the browser and sync when it's back. If two devices changed things at the same time, Homebox asks which version to keep.
 
-On the home server, each piece of equipment can also have **photos** (shrunk to 1600 px before upload and stored in the data folder's `photos/`).
+On the home server, each piece of equipment can also have **manuals and documents** (PDFs or images, up to 25 MB, opened through a per-file link) and **photos** (shrunk to 1600 px before upload and stored in the data folder's `photos/`).
+
+**Server status** at the bottom of the page shows free disk space, the server's last daily copy, and when your PC last copied a backup (the backup script touches `data/offsite-backup.stamp`).
 
 The data folder holds `homebox.json`, the password hash (`auth.json`), and a daily copy in `backups/` (the last 30 days). Back up that folder. When the app isn't served by this server (GitHub Pages, or opening the file directly), it works as before and saves in the browser.
 
