@@ -26,16 +26,20 @@ img { max-width: 100% }
   --display: "Bitter", "Rockwell", Georgia, serif;
   --body: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
-  --radius: 6px;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgb(20 20 25 / .06), 0 2px 8px rgb(20 20 25 / .05);
+  --glow: rgb(44 106 77 / .08); --accent-soft: rgb(44 106 77 / .1); --over-soft: rgb(178 50 30 / .08); --soon-soft: rgb(154 98 0 / .09);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #161618; --surface: #1F1F22; --sunk: #28282C; --ink: #E8E8EA; --muted: #A0A0A6; --line: #34343A;
   --accent: #72C49A; --accent-ink: #0D1310; --tag: #3A3322; --tag-ink: #E6D3A3;
-  --over: #F27D69; --soon: #E5AA42; --ok: #72C49A; color-scheme: dark } }
+  --over: #F27D69; --soon: #E5AA42; --ok: #72C49A; color-scheme: dark;
+  --shadow: 0 1px 2px rgb(0 0 0 / .35), 0 4px 14px rgb(0 0 0 / .2); --glow: rgb(114 196 154 / .07); --accent-soft: rgb(114 196 154 / .12); --over-soft: rgb(242 125 105 / .1); --soon-soft: rgb(229 170 66 / .1); } }
 :root[data-theme="dark"] {
   --bg: #161618; --surface: #1F1F22; --sunk: #28282C; --ink: #E8E8EA; --muted: #A0A0A6; --line: #34343A;
   --accent: #72C49A; --accent-ink: #0D1310; --tag: #3A3322; --tag-ink: #E6D3A3;
-  --over: #F27D69; --soon: #E5AA42; --ok: #72C49A; color-scheme: dark }
+  --over: #F27D69; --soon: #E5AA42; --ok: #72C49A; color-scheme: dark;
+  --shadow: 0 1px 2px rgb(0 0 0 / .35), 0 4px 14px rgb(0 0 0 / .2); --glow: rgb(114 196 154 / .07); --accent-soft: rgb(114 196 154 / .12); --over-soft: rgb(242 125 105 / .1); --soon-soft: rgb(229 170 66 / .1); }
 
 * { box-sizing: border-box }
 body { margin: 0; padding-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px); background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); }
@@ -160,6 +164,66 @@ table.spend th, table.spend td { text-align: right; padding: 7px 8px; border-bot
 table.spend th:first-child, table.spend td:first-child { text-align: left; white-space: normal }
 table.spend th { color: var(--muted); font-weight: 600; font-size: 12px }
 .log .entry .r { display: flex; gap: 6px }
+
+/* ---------- polish layer: softer surfaces, depth and motion (CSS only) ---------- */
+body { background: radial-gradient(1100px 420px at 50% -160px, var(--glow), transparent 70%) no-repeat, var(--bg) }
+.brand h1 { display: flex; align-items: center; gap: 12px }
+.brand h1 .logo { width: 40px; height: 40px; border-radius: 10px; box-shadow: var(--shadow) }
+header.top .actions .btn::before { content: "+"; font-weight: 700; margin-right: 6px; opacity: .8 }
+.btn { border-radius: 8px; transition: background-color .15s, border-color .15s, box-shadow .15s, transform .1s }
+.btn:active { transform: translateY(1px) }
+.btn.primary { background-image: linear-gradient(rgb(255 255 255 / .1), rgb(255 255 255 / 0)); box-shadow: var(--shadow); font-weight: 600 }
+.btn.primary:hover { filter: brightness(1.07); border-color: var(--accent) }
+.btn.small { border-radius: 7px }
+
+.strip { gap: 10px; border: 0; background: none; margin-top: 22px }
+.strip > div { border: 1px solid var(--line) !important; border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); padding: 14px 16px; position: relative; overflow: hidden }
+.strip > div::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--line) }
+.strip > div:first-child::before, .strip > div:last-child::before { background: var(--accent); opacity: .7 }
+.strip .over.has { background: linear-gradient(var(--over-soft), var(--over-soft)), var(--surface) } .strip .over::before { background: var(--over) }
+.strip .soon.has { background: linear-gradient(var(--soon-soft), var(--soon-soft)), var(--surface) } .strip .soon::before { background: var(--soon) }
+.strip b { font-size: 30px }
+
+nav.tabs { gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow) }
+nav.tabs button { border: 0; margin: 0; border-radius: 8px; padding: 8px 14px; font-size: 15px; transition: background-color .15s, color .15s }
+nav.tabs button:hover { color: var(--ink); background: var(--sunk) }
+nav.tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent) }
+
+.toolbar input, .toolbar select { border-radius: 8px; padding: 9px 12px; transition: border-color .15s, box-shadow .15s }
+.toolbar input:focus, .toolbar select:focus, label.f input:focus, label.f select:focus, label.f textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft) }
+label.f input, label.f select, label.f textarea { border-radius: 8px }
+
+.group h3, h3.grp { display: flex; align-items: center; gap: 8px; margin: 26px 0 10px }
+.group h3::after, h3.grp::after { content: ""; flex: 1; height: 1px; background: var(--line) }
+.list, .log { border-radius: var(--radius); box-shadow: var(--shadow) }
+.log { background: var(--surface) }
+.row { padding: 14px 16px 14px 0; transition: background-color .15s }
+.row .stripe { width: 4px; border-radius: 0 4px 4px 0; margin: 2px 0 }
+.row.clickable:hover { background: color-mix(in srgb, var(--sunk) 70%, transparent) }
+.row .title { font-size: 15.5px }
+.chip { border-radius: 6px; padding: 1px 8px }
+.pill { padding: 2px 9px }
+.pill.over { background: var(--over-soft) } .pill.soon { background: var(--soon-soft) } .pill.ok { background: var(--accent-soft) }
+
+.notice { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--surface); box-shadow: var(--shadow) }
+.empty { border-radius: var(--radius) }
+
+dialog { border-radius: 16px; box-shadow: 0 20px 60px rgb(0 0 0 / .35) }
+dialog::backdrop { background: rgb(10 10 12 / .55) }
+.sheet { padding: 22px 22px 18px }
+.sheet h2 { font-size: 22px }
+.sub { padding-top: 14px; border-top: 1px solid var(--line) }
+dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--sunk) }
+
+.datafoot { margin-top: 44px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow) }
+.spend-cards div { box-shadow: var(--shadow) }
+.spend-cards div:first-child { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface) }
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog[open] { animation: pop .18s ease-out } @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.985) } }
+  .btn:hover, .row.clickable:hover { transition-duration: .1s }
+}
+@media (max-width: 420px) { nav.tabs button { padding: 8px 9px; font-size: 14.5px } .strip b { font-size: 26px } }
 #print-area { display: none }
 @media print {
   body.printing { background: #fff }
@@ -180,7 +244,7 @@ table.spend th { color: var(--muted); font-weight: 600; font-size: 12px }
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <h1>Homebox</h1>
+      <h1><img class="logo" src="icon.svg" alt="">Homebox</h1>
       <p>Equipment, tools and parts around the house, and the upkeep they need.</p>
     </div>
     <div class="actions">
@@ -331,6 +395,8 @@ function render() {
   $("s-over").textContent = ready ? over : "–";
   $("s-soon").textContent = ready ? soon : "–";
   $("s-warr").textContent = ready ? warr : "–";
+  $("s-over").parentElement.classList.toggle("has", ready && over > 0);
+  $("s-soon").parentElement.classList.toggle("has", ready && soon > 0);
 
   const examples = S.items.some((i) => i.example) || S.tasks.some((t) => t.example) || S.parts.some((x) => x.example) || S.projects.some((x) => x.example);
   const real = S.items.filter((i) => !i.example).length + S.tasks.filter((t) => !t.example).length;
