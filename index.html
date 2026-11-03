@@ -653,7 +653,8 @@ function renderUpcoming(ready) {
   const groups = [
     [tv("Overdue", "Urgent quests"), sorted.filter((t) => daysUntil(t.nextDue) < 0)],
     [tv("Next 15 days", "Upcoming quests"), sorted.filter((t) => { const n = daysUntil(t.nextDue); return n >= 0 && n <= SOON_DAYS; })],
-    [tv("Later", "Quests on the horizon"), sorted.filter((t) => daysUntil(t.nextDue) > SOON_DAYS)],
+    [tv("Within 3 months", "Quests on the horizon"), sorted.filter((t) => { const n = daysUntil(t.nextDue); return n > SOON_DAYS && n <= 90; })],
+    [tv("More than 3 months out", "Distant quests"), sorted.filter((t) => daysUntil(t.nextDue) > 90)],
   ];
   el.innerHTML = groups.filter(([, l]) => l.length).map(([h, l]) =>
     `<div class="group"><h3>${h} · ${l.length}</h3><div class="list">${l.map((t) => taskRow(t)).join("")}</div></div>`).join("");
