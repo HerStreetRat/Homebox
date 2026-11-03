@@ -331,6 +331,7 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
 .xpbar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden } .xpbar i { display: block; height: 100%; background: var(--accent); border-radius: 99px }
 .hero-card .log { box-shadow: none }
 .hero-card .log .entry { grid-template-columns: minmax(0, 1fr) auto; padding: 6px 10px; font-size: 14px } .hero-card .log .entry .due { grid-column: 1 / -1; font-size: 12px; color: var(--muted) }
+.log .entry.clickable { cursor: pointer } .log .entry.clickable:hover { background: var(--accent-soft) }
 .btn:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.4) }
 @media (min-width: 700px) { [data-skin="tavern"] nav.tabs button { padding-inline: 11px; font-size: 14px; letter-spacing: .04em } }
 .hero-btns { display: flex; flex-wrap: wrap; gap: 6px }
@@ -617,7 +618,7 @@ function taskRow(t, showItem = true) {
       <div class="title">${esc(t.title)}${t.example ? '<span class="ex">Example</span>' : ""}</div>
       <div class="meta">
         <span class="due">${esc(rel(t.nextDue))}${daysUntil(t.nextDue) < 45 ? " · " + esc(nice(t.nextDue)) : ""}</span>
-        <span>${esc(every(t))}</span>
+        <span>${esc(every(t))}</span><span title="${starsOf(t) * XP.star} XP">${starText(starsOf(t))}</span>
         ${showItem && it ? `<span>${esc(itemName(it))}${it.location ? " · " + esc(isTavern() && realmName(it.location) || it.location) : ""}</span>` : ""}
         ${t.lastDone ? `<span>Last done ${esc(nice(t.lastDone))}</span>` : ""}
       </div>
@@ -908,7 +909,7 @@ function taskForm(t = {}, presetItem = "") {
         <select id="t-unit" name="unit">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}"${(t.unit || "months") === k ? " selected" : ""}>${v}s</option>`).join("")}</select></span></label>
       <label class="f">Next due<input id="t-due" name="nextDue" type="date" value="${esc(t.nextDue || today())}" required></label>
       <label class="f full">Notes<textarea id="t-notes" name="notes" placeholder="16x25x1 MERV 8. Buy in packs of 6.">${esc(t.notes)}</textarea></label>
-      <label class="f full check"><span><input type="checkbox" name="big"${t.big ? " checked" : ""}> ${tv("Big job", "Big quest")} (${XP.bigQuest} XP instead of ${XP.quest})</span></label>
+      ${starSelect(t)}
     </div>
     <div class="err" id="form-err" hidden></div>
     <footer>${t.id ? `<button type="button" class="btn danger" data-act="del-task" data-id="${t.id}">Delete</button>` : ""}
@@ -1082,13 +1083,13 @@ document.addEventListener("submit", async (e) => {
   if (f.id === "bounty-form") {
     const d = formData(f), prev = id ? S.bounties.find((b) => b.id === id) : null;
     const ref = id ? S.db.doc("bounties/" + id) : S.db.collection("bounties").doc();
-    if (await write(() => ref.set({ ...(prev || { history: [], lastDone: "", createdAt: new Date().toISOString() }), title: d.title, every: d.every, xp: Math.max(1, parseInt(d.xp, 10) || XP.bounty), notes: d.notes }), id ? "Saved" : tv("Chore added", "Bounty posted"))) closeSheet();
+    if (await write(() => ref.set({ ...(prev || { history: [], lastDone: "", createdAt: new Date().toISOString() }), title: d.title, every: d.every, stars: starsOf(d), xp: null, notes: d.notes }), id ? "Saved" : tv("Chore added", "Bounty posted"))) closeSheet();
     return;
   }
   if (f.id === "task-form") {
     const d = formData(f);
     const prev = id ? S.tasks.find((t) => t.id === id) : null;
-    const body = { ...(prev || {}), ...d, every: Math.max(1, parseInt(d.every, 10) || 1), big: d.big === "on" };
+    const body = { ...(prev || {}), ...d, every: Math.max(1, parseInt(d.every, 10) || 1), stars: starsOf(d) }; delete body.big;
     delete body.id;
     const ref = id ? S.db.doc("tasks/" + id) : S.db.collection("tasks").doc();
     const back = sheet.dataset.back;
@@ -1219,7 +1220,7 @@ document.addEventListener("click", async (e) => {
       const d = today(), h = myHero(); let gain = "";
       if (await write(async () => {
         await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h?.id || "", passed: false, history: [{ date: d, by: h?.id || "" }, ...(b.history || [])].slice(0, 60) });
-        gain = await awardXp(+b.xp || XP.bounty, b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
+        gain = await awardXp(starsOf(b) * XP.star, b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
       })) toast((h ? tv("Done", "Bounty claimed!") : tv("Done. Pick who you are on the XP tab to earn XP.", "Claimed! Choose your hero in the Guild Hall to earn XP.")) + gain);
       return;
     }
@@ -1256,7 +1257,7 @@ document.addEventListener("click", async (e) => {
         await S.db.doc("tasks/" + id).update({ lastDone: d, nextDue: next, history });
         const it = itemById(t.itemId);
         if (it) await S.db.doc("items/" + it.id).update({ log: [...(it.log || []), { id: newId(), date: d, what: t.title, cost: "", by: myHero()?.name || "", task: t.id }] });
-        gain = await awardXp((t.big ? XP.bigQuest : XP.quest) + (wasOver ? XP.overdue : 0), t.title, `quest:${t.id}:${d}`);
+        gain = await awardXp(starsOf(t) * XP.star + (wasOver ? XP.overdue : 0), t.title, `quest:${t.id}:${d}`);
       }) && toast((isTavern() ? `Quest complete! It returns ${nice(next)}` : `Logged. Next due ${nice(next)}`) + gain);
       if (inItem) itemSheet(inItem);
       return;
@@ -1893,7 +1894,7 @@ function renderSpending(ready) {
     ${table("By equipment and project", "What", new Map([...byThing.values()].slice(0, 200).map(({ e, v }) => [itemLabel(e), v])))}
     ${table("By area of the house", "Area", by((e) => esc(e.area)))}
     <h3 class="grp">${year ? "Everything in " + esc(year) : "Most recent"}</h3>
-    <div class="log">${(year ? list : list.slice(0, 20)).map((e) => `<div class="entry"><span class="due">${esc(e.date ? nice(e.date) : "No date")}</span><span class="what">${esc(e.what)}<br><span class="sm">${SPEND_KINDS[e.kind]}</span></span><b>${esc(fmtMoney(e.amount))}</b></div>`).join("")}</div>`;
+    <div class="log">${(year ? list : list.slice(0, 20)).map((e) => `<div class="entry clickable" role="button" tabindex="0" title="Open to edit" data-act="${e.itemId ? "open-item" : "open-project"}" data-id="${esc(e.itemId || e.projectId)}"><span class="due">${esc(e.date ? nice(e.date) : "No date")}</span><span class="what">${esc(e.what)}<br><span class="sm">${SPEND_KINDS[e.kind]} · tap to edit</span></span><b>${esc(fmtMoney(e.amount))}</b></div>`).join("")}</div>`;
 }
 $("f-syear").addEventListener("input", () => renderSpending(S.loaded.items && S.loaded.tasks));
 
@@ -1929,7 +1930,11 @@ function healthSheet() {
 
 /* ---------- heroes, XP, boons and the Bounty Board ---------- */
 const HERO_KEY = "homebox-hero";
-const XP = { bounty: 10, quest: 25, bigQuest: 50, overdue: 10, objective: 15, campaign: 100 };
+const XP = { star: 10, overdue: 10, objective: 15, campaign: 50 };
+// Difficulty: 1 to 3 stars, 10 XP per star. Older records: "big" tasks count as 3, a bounty's old XP number is rounded to stars.
+const starsOf = (x) => Math.min(3, Math.max(1, +x.stars || (x.big ? 3 : x.xp ? Math.round(+x.xp / 10) : 1)));
+const starText = (n) => "★".repeat(n) + "☆".repeat(3 - n);
+const starSelect = (x) => `<label class="f">Difficulty<select name="stars">${[1, 2, 3].map((n) => `<option value="${n}"${starsOf(x) === n ? " selected" : ""}>${starText(n)} · ${n * XP.star} XP</option>`).join("")}</select></label>`;
 const levelNeed = (lvl) => 100 + 25 * (lvl - 1);
 function levelOf(total) { let lvl = 1, left = Math.max(0, total); while (left >= levelNeed(lvl)) { left -= levelNeed(lvl); lvl++; } return { lvl, into: left, need: levelNeed(lvl) }; }
 const heroXp = (h) => (h.xp || []).reduce((n, e) => n + (+e.amount || 0), 0);
@@ -2023,7 +2028,7 @@ function bountyForm(b = {}) {
     <div class="fields">
       <label class="f full">${tv("Chore", "Bounty")}<input name="title" maxlength="80" value="${esc(b.title)}" placeholder="Take out the trash" required></label>
       <label class="f">Resets<select name="every">${Object.entries(BOUNTY_EVERY).map(([k, [l]]) => `<option value="${k}"${(b.every || "week") === k ? " selected" : ""}>${l}</option>`).join("")}</select></label>
-      <label class="f">XP<input name="xp" type="number" min="1" max="100" value="${esc(b.xp ?? XP.bounty)}" required></label>
+      ${starSelect(b)}
       <label class="f full">Notes<textarea name="notes" placeholder="Bins go out Tuesday night.">${esc(b.notes)}</textarea></label>
     </div>
     <footer>${b.id ? `<button type="button" class="btn danger" data-act="del-bounty" data-id="${b.id}">Delete</button>` : ""}<div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Save</button></div></footer>
@@ -2043,7 +2048,7 @@ function renderBounties(ready) {
     return `<div class="row ${done ? "ok" : ""}">
       <span class="stripe"></span>
       <div class="main"><div class="title">${esc(b.title)}</div>
-        <div class="meta">${done ? `<span>${b.passed ? tv("Skipped with a pass", "Skipped with a Pass scroll") : tv("Done", "Claimed")}${by ? " by " + esc(by) : ""} · ${esc(nice(b.lastDone))}</span>` : `<span>${BOUNTY_EVERY[b.every || "week"][0]}</span>`}<span>${+b.xp || XP.bounty} XP</span>${b.notes ? `<span>${esc(b.notes)}</span>` : ""}</div></div>
+        <div class="meta">${done ? `<span>${b.passed ? tv("Skipped with a pass", "Skipped with a Pass scroll") : tv("Done", "Claimed")}${by ? " by " + esc(by) : ""} · ${esc(nice(b.lastDone))}</span>` : `<span>${BOUNTY_EVERY[b.every || "week"][0]}</span>`}<span title="${starsOf(b) * XP.star} XP">${starText(starsOf(b))}</span>${b.notes ? `<span>${esc(b.notes)}</span>` : ""}</div></div>
       <div class="side">${done ? `<button class="btn small" data-act="bounty-undo" data-id="${b.id}">Undo</button>` : `<button class="btn small primary" data-act="bounty-claim" data-id="${b.id}">${tv("Done", "Claim bounty")}</button>${canPass ? `<button class="btn small" data-act="bounty-pass" data-id="${b.id}" title="Spend ${+pass.cost || 1} ${tokenWord(+pass.cost || 1)}">${tv("Use a pass", "Use Pass scroll")}</button>` : ""}`}<button class="btn small" data-act="edit-bounty" data-id="${b.id}">Edit</button></div>
     </div>`;
   };
@@ -2081,7 +2086,7 @@ function renderGuild(ready) {
   box.innerHTML = `${heroes.length ? `<div class="hero-grid">${heroes.map(card).join("")}</div>` : `<div class="empty">${tv("Add each person in the house. Finishing maintenance, chores and project steps earns XP, every level earns a reward token, and tokens buy rewards you all agree on.", "Add each member of your party. Quests, bounties and campaign objectives earn XP, every level earns a boon token, and tokens buy boons from the shop below.")}</div>`}
     <div class="toolbar"><button class="btn" data-act="new-hero">${tv("Add a person", "Add a hero")}</button></div>
     <h3 class="grp">${tv("Rewards", "Boon Shop")}</h3>
-    <p class="sm">${mine ? `${esc(mine.name)} has ${mineTok} ${tokenWord(mineTok)} to spend.` : tv("Pick who you are above to use rewards.", "Choose your hero above to claim boons.")} ${tv("Earn XP", "XP")}: ${tv("chore", "bounty")} ${XP.bounty}, ${tv("maintenance", "quest")} ${XP.quest} (big ${XP.bigQuest}), +${XP.overdue} ${tv("when it was overdue", "for an urgent quest")}, ${tv("project step", "objective")} ${XP.objective}, ${tv("finished project", "campaign won")} ${XP.campaign}.</p>
+    <p class="sm">${mine ? `${esc(mine.name)} has ${mineTok} ${tokenWord(mineTok)} to spend.` : tv("Pick who you are above to use rewards.", "Choose your hero above to claim boons.")} ${tv("Earn XP", "XP")}: ${tv("chores and maintenance", "bounties and quests")} ★ ${XP.star}, ★★ ${2 * XP.star}, ★★★ ${3 * XP.star}, +${XP.overdue} ${tv("when it was overdue", "for an urgent quest")}, ${tv("project step", "objective")} ${XP.objective}, ${tv("finished project", "campaign won")} ${XP.campaign}.</p>
     ${S.boons.length ? `<div class="list">${shop}</div>` : ""}
     <div class="toolbar"><button class="btn" data-act="new-boon">${tv("Add a reward", "Add a boon")}</button>${S.boons.length ? "" : `<button class="btn" data-act="seed-boons">Add Pass scroll and Inspiration</button>`}</div>`;
 }
