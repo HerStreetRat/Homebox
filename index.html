@@ -629,6 +629,7 @@ function taskRow(t, showItem = true) {
     </div>
     <div class="side">
       <button class="btn small primary" data-act="done" data-id="${t.id}">${tv("Done today", "Complete quest")}</button>
+      ${canPassX(t) ? `<button class="btn small" data-act="quest-pass" data-id="${t.id}" title="Skip this round. Spends ${passCost(t)} ${tokenWord(passCost(t))}.">${tv("Use a pass", "Use Pass scroll")} (${passCost(t)})</button>` : ""}
       <a class="btn small" href="${esc(calLink(t))}" target="_blank" rel="noopener">Add to calendar</a>
       <button class="btn small" data-act="edit-task" data-id="${t.id}">Edit</button>
     </div>
@@ -1230,7 +1231,7 @@ document.addEventListener("click", async (e) => {
     }
     case "bounty-pass": {
       const b = S.bounties.find((x) => x.id === id), h = myHero(), pass = S.boons.find((x) => x.pass); if (!b || !h || !pass) return;
-      const cost = +pass.cost || 1; if (heroTokens(h) < cost) return;
+      const cost = passCost(b); if (heroTokens(h) < cost) return;
       if (!arm(el, `Spend ${cost} ${tokenWord(cost)}?`)) return;
       armed = null;
       const d = today();
@@ -1238,6 +1239,21 @@ document.addEventListener("click", async (e) => {
         await S.db.doc("heroes/" + h.id).update({ spent: [...(h.spent || []), { id: newId(), date: d, boonId: pass.id, name: `${pass.name}: ${b.title}`, cost }] });
         await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h.id, passed: true, history: [{ date: d, by: h.id, passed: true }, ...(b.history || [])].slice(0, 60) });
       }, tv("Skipped with a pass", "The Pass scroll is spent. Bounty skipped."));
+      return;
+    }
+    case "quest-pass": {
+      const t = S.tasks.find((x) => x.id === id), h = myHero(), pass = S.boons.find((x) => x.pass); if (!t || !h || !pass) return;
+      const cost = passCost(t); if (heroTokens(h) < cost) return;
+      if (!arm(el, `Spend ${cost} ${tokenWord(cost)}?`)) return;
+      armed = null;
+      const d = today(), next = addInterval(d, t.every, t.unit);
+      await write(async () => {
+        await S.db.doc("heroes/" + h.id).update({ spent: [...(h.spent || []), { id: newId(), date: d, boonId: pass.id, name: `${pass.name}: ${t.title}`, cost }] });
+        await S.db.doc("tasks/" + id).update({ nextDue: next });
+        const it = itemById(t.itemId);
+        if (it) await S.db.doc("items/" + it.id).update({ log: [...(it.log || []), { id: newId(), date: d, what: `${t.title} (skipped with a ${pass.name})`, cost: "", by: h.name, task: t.id }] });
+      }, `${tv("Skipped", "The Pass scroll is spent")}. Next due ${nice(next)}`);
+      if (inItem) itemSheet(inItem);
       return;
     }
     case "bounty-undo": {
@@ -1937,6 +1953,9 @@ const HERO_KEY = "homebox-hero";
 const XP = { star: 10, overdue: 10, objective: 0, campaign: 50 }; // objectives give no XP (Red: the campaign total is enough)
 // Difficulty: 1 to 3 stars, 10 XP per star. Older records: "big" tasks count as 3, a bounty's old XP number is rounded to stars.
 const starsOf = (x) => Math.min(3, Math.max(1, +x.stars || (x.big ? 3 : x.xp ? Math.round(+x.xp / 10) : 1)));
+// A Pass scroll costs its shop price per star of the bounty or quest it skips.
+const passCost = (x) => { const pass = S.boons.find((b) => b.pass); return pass ? (+pass.cost || 1) * starsOf(x) : 0; };
+const canPassX = (x) => { const h = myHero(), c = passCost(x); return !!(h && c && heroTokens(h) >= c); };
 const starText = (n) => "★".repeat(n) + "☆".repeat(3 - n);
 const starSelect = (x) => `<label class="f">Difficulty<select name="stars">${[1, 2, 3].map((n) => `<option value="${n}"${starsOf(x) === n ? " selected" : ""}>${starText(n)} · ${n * XP.star} XP</option>`).join("")}</select></label>`;
 const levelNeed = (lvl) => 100 + 25 * (lvl - 1);
@@ -2012,7 +2031,7 @@ function boonForm(b = {}) {
   </form>`);
 }
 const DEFAULT_BOONS = [
-  { name: "Pass scroll", cost: 1, pass: true, desc: "Skip one bounty (chore) this round. Use it from the Bounty Board." },
+  { name: "Pass scroll", cost: 1, pass: true, desc: "Skip one bounty or quest this round. Costs 1 token per star. Use it from the Bounty Board or Quest Log." },
   { name: "Inspiration", cost: 1, desc: "One Inspiration point at your next D&D session, with the DM's blessing." },
 ];
 async function seedBoons() { if (S.boons.length) return; for (const b of DEFAULT_BOONS) await S.db.collection("boons").doc().set({ ...b, createdAt: new Date().toISOString() }); }
@@ -2048,12 +2067,12 @@ function renderBounties(ready) {
   const pass = S.boons.find((b) => b.pass);
   const row = (b) => {
     const done = bountyDone(b), by = done && b.doneBy ? heroById(b.doneBy)?.name || "" : "";
-    const canPass = !done && me && pass && heroTokens(me) >= (+pass.cost || 1);
+    const canPass = !done && canPassX(b), pc = passCost(b);
     return `<div class="row ${done ? "ok" : ""}">
       <span class="stripe"></span>
       <div class="main"><div class="title">${esc(b.title)}</div>
         <div class="meta">${done ? `<span>${b.passed ? tv("Skipped with a pass", "Skipped with a Pass scroll") : tv("Done", "Claimed")}${by ? " by " + esc(by) : ""} · ${esc(nice(b.lastDone))}</span>` : `<span>${BOUNTY_EVERY[b.every || "week"][0]}</span>`}<span title="${starsOf(b) * XP.star} XP">${starText(starsOf(b))}</span>${b.notes ? `<span>${esc(b.notes)}</span>` : ""}</div></div>
-      <div class="side">${done ? `<button class="btn small" data-act="bounty-undo" data-id="${b.id}">Undo</button>` : `<button class="btn small primary" data-act="bounty-claim" data-id="${b.id}">${tv("Done", "Claim bounty")}</button>${canPass ? `<button class="btn small" data-act="bounty-pass" data-id="${b.id}" title="Spend ${+pass.cost || 1} ${tokenWord(+pass.cost || 1)}">${tv("Use a pass", "Use Pass scroll")}</button>` : ""}`}<button class="btn small" data-act="edit-bounty" data-id="${b.id}">Edit</button></div>
+      <div class="side">${done ? `<button class="btn small" data-act="bounty-undo" data-id="${b.id}">Undo</button>` : `<button class="btn small primary" data-act="bounty-claim" data-id="${b.id}">${tv("Done", "Claim bounty")}</button>${canPass ? `<button class="btn small" data-act="bounty-pass" data-id="${b.id}" title="Spend ${pc} ${tokenWord(pc)}">${tv("Use a pass", "Use Pass scroll")} (${pc})</button>` : ""}`}<button class="btn small" data-act="edit-bounty" data-id="${b.id}">Edit</button></div>
     </div>`;
   };
   box.innerHTML = who + Object.entries(BOUNTY_EVERY).map(([k, [, label]]) => {
