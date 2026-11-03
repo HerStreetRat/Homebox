@@ -319,6 +319,27 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
 [data-skin="tavern"] .toast { font-family: var(--display); letter-spacing: .05em; background: var(--frame); color: #F6E7C6; border: 1px solid var(--gold) }
 [data-skin="tavern"] .datafoot { font-size: 15px }
 .skin-switch { margin-left: 2px }
+/* Heroes, XP and the Bounty Board */
+.sm { color: var(--muted); font-size: 13px }
+.hero-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 16px }
+.hero-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0 }
+.hero-card.me { border-color: var(--accent) }
+.hero-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start }
+.hero-name { font-family: var(--display); font-size: 20px; font-weight: 700 }
+.hero-title { color: var(--muted); font-size: 14px }
+.hero-tok { text-align: center; flex: none } .hero-tok b { display: block; font-family: var(--display); font-size: 24px; color: var(--accent); line-height: 1 } .hero-tok span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
+.xpbar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden } .xpbar i { display: block; height: 100%; background: var(--accent); border-radius: 99px }
+.hero-card .log { box-shadow: none }
+.hero-card .log .entry { grid-template-columns: minmax(0, 1fr) auto; padding: 6px 10px; font-size: 14px } .hero-card .log .entry .due { grid-column: 1 / -1; font-size: 12px; color: var(--muted) }
+.btn:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.4) }
+@media (min-width: 700px) { [data-skin="tavern"] nav.tabs button { padding-inline: 11px; font-size: 14px; letter-spacing: .04em } }
+.hero-btns { display: flex; flex-wrap: wrap; gap: 6px }
+#hero-chip:empty { display: none }
+#hero-chip { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; color: var(--muted) }
+#hero-chip b { color: var(--ink) } #hero-chip .xpbar { width: 140px; height: 8px }
+[data-skin="tavern"] .hero-name { font-family: var(--display); letter-spacing: .02em }
+[data-skin="tavern"] .hero-card { background: var(--surface); border: 1px solid var(--line); outline: 1px solid var(--line); outline-offset: -5px }
+[data-skin="tavern"] .xpbar { background: rgb(0 0 0 / .14); border: 1px solid var(--gold) } [data-skin="tavern"] .xpbar i { background: linear-gradient(90deg, var(--gold), var(--accent)) }
 #print-area { display: none }
 @media print {
   body.printing { background: #fff }
@@ -357,6 +378,7 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
     <div><b id="s-warr">–</b><span data-tv="Wards fading">Warranties ending</span></div>
   </div>
 
+  <div id="hero-chip"></div>
   <div id="banner"></div>
 
   <nav class="tabs" role="tablist">
@@ -364,6 +386,8 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
     <button role="tab" id="tab-items" data-view="items" aria-selected="false" data-tv="Inventory">Equipment</button>
     <button role="tab" id="tab-parts" data-view="parts" aria-selected="false" data-tv="Supplies &amp; Reagents">Parts &amp; supplies</button>
     <button role="tab" id="tab-projects" data-view="projects" aria-selected="false" data-tv="Campaigns">Projects</button>
+    <button role="tab" id="tab-bounties" data-view="bounties" aria-selected="false" data-tv="Bounty Board">Chores</button>
+    <button role="tab" id="tab-guild" data-view="guild" aria-selected="false" data-tv="Guild Hall">XP &amp; rewards</button>
     <button role="tab" id="tab-spending" data-view="spending" aria-selected="false" data-tv="Treasury">Spending</button>
   </nav>
 
@@ -392,6 +416,12 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
     </div>
     <div id="parts-list"></div>
   </section>
+
+  <section id="view-bounties" hidden>
+    <div class="toolbar"><button class="btn primary" data-act="new-bounty" data-tv="Post a bounty">Add a chore</button></div>
+    <div id="bounties-list"></div>
+  </section>
+  <section id="view-guild" hidden><div id="guild-list"></div></section>
 
   <section id="view-spending" hidden>
     <div class="toolbar">
@@ -425,7 +455,7 @@ const TASK_IDEAS = ["Replace furnace filter", "Oil blower motor", "Winterize", "
 const UNITS = { days: "day", weeks: "week", months: "month", years: "year" };
 const RRULE = { days: "DAILY", weeks: "WEEKLY", months: "MONTHLY", years: "YEARLY" };
 
-const S = { items: [], tasks: [], parts: [], projects: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
+const S = { items: [], tasks: [], parts: [], projects: [], heroes: [], boons: [], bounties: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 /* ---------- skins: "classic" (default) or "tavern" (fantasy quest-journal look). Per device; data never changes. ---------- */
@@ -551,7 +581,12 @@ function render() {
   renderItems(ready);
   renderParts(ready);
   renderProjects(ready);
+  renderBounties(ready);
+  renderGuild(ready);
   renderSpending(ready);
+  const me = myHero();
+  if (me) { const L = levelOf(heroXp(me)), tok = heroTokens(me); $("hero-chip").innerHTML = `<span><b>${esc(me.name)}</b> · Level ${L.lvl} ${esc(heroTitle(me))}</span><span class="xpbar" title="${L.into} / ${L.need} XP"><i style="width:${Math.round(100 * L.into / L.need)}%"></i></span><span>${L.into} / ${L.need} XP</span><span>${tok} ${tokenWord(tok)}</span>`; }
+  else $("hero-chip").innerHTML = "";
 }
 
 function fillLists() {
@@ -873,6 +908,7 @@ function taskForm(t = {}, presetItem = "") {
         <select id="t-unit" name="unit">${Object.entries(UNITS).map(([k, v]) => `<option value="${k}"${(t.unit || "months") === k ? " selected" : ""}>${v}s</option>`).join("")}</select></span></label>
       <label class="f">Next due<input id="t-due" name="nextDue" type="date" value="${esc(t.nextDue || today())}" required></label>
       <label class="f full">Notes<textarea id="t-notes" name="notes" placeholder="16x25x1 MERV 8. Buy in packs of 6.">${esc(t.notes)}</textarea></label>
+      <label class="f full check"><span><input type="checkbox" name="big"${t.big ? " checked" : ""}> ${tv("Big job", "Big quest")} (${XP.bigQuest} XP instead of ${XP.quest})</span></label>
     </div>
     <div class="err" id="form-err" hidden></div>
     <footer>${t.id ? `<button type="button" class="btn danger" data-act="del-task" data-id="${t.id}">Delete</button>` : ""}
@@ -1001,7 +1037,10 @@ document.addEventListener("submit", async (e) => {
     if (!prev) { body.steps = []; body.materials = []; body.log = []; body.createdAt = body.updatedAt; }
     delete body.id;
     const ref = id ? S.db.doc("projects/" + id) : S.db.collection("projects").doc();
-    if (await write(() => ref.set(body), id ? "Project updated" : "Project added")) projectSheet(ref.id);
+    if (await write(() => ref.set(body), id ? "Project updated" : "Project added")) {
+      if (body.status === "Done" && prev?.status !== "Done") { const g = await awardXp(XP.campaign, `${tv("Finished", "Campaign won")}: ${body.name || ""}`, `camp:${ref.id}`); if (g) toast(tv("Project done", "Campaign won!") + g); }
+      projectSheet(ref.id);
+    }
   }
   if (f.classList.contains("pj-add")) {
     const pid = f.closest("[data-project]")?.dataset.project, pj = projById(pid), key = f.dataset.list;
@@ -1018,10 +1057,38 @@ document.addEventListener("submit", async (e) => {
     const back = sheet.dataset.back;
     if (await write(() => ref.set(body), id ? "Part updated" : "Part added")) { if (back) itemSheet(back); else closeSheet(); }
   }
+  if (f.id === "hero-form") {
+    const d = formData(f), first = !S.heroes.length;
+    const ref = id ? S.db.doc("heroes/" + id) : S.db.collection("heroes").doc();
+    const prev = id ? heroById(id) : null;
+    if (await write(async () => { await ref.set({ ...(prev || { xp: [], spent: [], titles: [], createdAt: new Date().toISOString() }), name: d.name }); if (first) await seedBoons(); }, id ? "Saved" : `${d.name} ${tv("added", "joins the guild")}`)) {
+      if (!id && !myHero()) setMyHero(ref.id);
+      closeSheet();
+    }
+    return;
+  }
+  if (f.id === "title-form") {
+    const h = heroById(id), lvl = +f.dataset.level, text = formData(f).text; if (!h) return closeSheet();
+    const titles = (h.titles || []).filter((t) => t.level !== lvl).concat(text ? [{ level: lvl, text }] : []);
+    if (await write(() => S.db.doc("heroes/" + id).update({ titles }), text ? `${h.name} is now ${text}` : "Title reset")) closeSheet();
+    return;
+  }
+  if (f.id === "boon-form") {
+    const d = formData(f), prev = id ? S.boons.find((b) => b.id === id) : null;
+    const ref = id ? S.db.doc("boons/" + id) : S.db.collection("boons").doc();
+    if (await write(() => ref.set({ ...(prev || { createdAt: new Date().toISOString() }), name: d.name, cost: Math.max(1, parseInt(d.cost, 10) || 1), desc: d.desc }), "Saved")) closeSheet();
+    return;
+  }
+  if (f.id === "bounty-form") {
+    const d = formData(f), prev = id ? S.bounties.find((b) => b.id === id) : null;
+    const ref = id ? S.db.doc("bounties/" + id) : S.db.collection("bounties").doc();
+    if (await write(() => ref.set({ ...(prev || { history: [], lastDone: "", createdAt: new Date().toISOString() }), title: d.title, every: d.every, xp: Math.max(1, parseInt(d.xp, 10) || XP.bounty), notes: d.notes }), id ? "Saved" : tv("Chore added", "Bounty posted"))) closeSheet();
+    return;
+  }
   if (f.id === "task-form") {
     const d = formData(f);
     const prev = id ? S.tasks.find((t) => t.id === id) : null;
-    const body = { ...(prev || {}), ...d, every: Math.max(1, parseInt(d.every, 10) || 1) };
+    const body = { ...(prev || {}), ...d, every: Math.max(1, parseInt(d.every, 10) || 1), big: d.big === "on" };
     delete body.id;
     const ref = id ? S.db.doc("tasks/" + id) : S.db.collection("tasks").doc();
     const back = sheet.dataset.back;
@@ -1042,7 +1109,7 @@ function arm(btn, label) {
 
 document.addEventListener("click", async (e) => {
   const tab = e.target.closest("[data-view]");
-  if (tab) { S.view = tab.dataset.view; for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-selected", b === tab); for (const v of ["upcoming", "items", "parts", "projects", "spending"]) $("view-" + v).hidden = S.view !== v; return; }
+  if (tab) { S.view = tab.dataset.view; for (const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-selected", b === tab); for (const v of ["upcoming", "items", "parts", "projects", "bounties", "guild", "spending"]) $("view-" + v).hidden = S.view !== v; return; }
   const el = e.target.closest("[data-act]"); if (!el) return;
   const act = el.dataset.act, id = el.dataset.id;
   if (armed && armed !== el) { armed.classList.remove("armed"); armed.textContent = armed.dataset.label; armed = null; }
@@ -1073,14 +1140,21 @@ document.addEventListener("click", async (e) => {
     case "open-project": return projectSheet(id);
     case "edit-project": return projectForm(projById(id));
     case "pj-done": {
-      if (await write(() => S.db.doc("projects/" + id).update({ status: "Done", finished: today() }), "Project marked done")) projectSheet(id);
+      if (await write(() => S.db.doc("projects/" + id).update({ status: "Done", finished: today() }))) { const g = await awardXp(XP.campaign, `${tv("Finished", "Campaign won")}: ${projById(id)?.name || ""}`, `camp:${id}`); toast(tv("Project marked done", "Campaign won!") + g); projectSheet(id); }
       return;
     }
     case "pj-toggle": case "pj-del": {
       const pid = el.closest("[data-project]")?.dataset.project, pj = projById(pid); if (!pj) return;
       const key = el.dataset.list, cid = el.dataset.cid;
       const arr = act === "pj-del" ? (pj[key] || []).filter((x) => x.id !== cid) : (pj[key] || []).map((x) => x.id === cid ? { ...x, done: el.checked } : x);
-      if (await write(() => S.db.doc("projects/" + pid).update({ [key]: arr }))) projectSheet(pid);
+      if (await write(() => S.db.doc("projects/" + pid).update({ [key]: arr }))) {
+        if (key === "steps" && act === "pj-toggle") {
+          const ref = `step:${pid}:${cid}`, step = arr.find((x) => x.id === cid);
+          if (el.checked) { const g = await awardXp(XP.objective, `${step?.text || "Step"} · ${pj.name}`, ref); if (g) toast(tv("Step done", "Objective cleared") + g); }
+          else await revokeXp(ref);
+        }
+        projectSheet(pid);
+      }
       return;
     }
     case "del-project": {
@@ -1104,17 +1178,86 @@ document.addEventListener("click", async (e) => {
       if (!$("i-purchase").value) toast("No purchase date yet, so counted from today");
       return;
     }
+    case "go-guild": return $("tab-guild").click();
+    case "new-hero": return heroForm();
+    case "edit-hero": return heroForm(heroById(id));
+    case "hero-me": setMyHero(id); if (id) toast(`${tv("Welcome", "Well met")}, ${heroById(id)?.name || ""}`); return;
+    case "hero-title": return titleForm(id);
+    case "del-hero": {
+      if (!arm(el, "Tap again to remove")) return;
+      armed = null;
+      if (await write(() => S.db.doc("heroes/" + id).delete(), "Removed")) { if (myHeroId() === id) setMyHero(""); closeSheet(); }
+      return;
+    }
+    case "new-boon": return boonForm();
+    case "edit-boon": return boonForm(S.boons.find((b) => b.id === id));
+    case "seed-boons": await write(seedBoons, "Boons added"); return;
+    case "del-boon": {
+      if (!arm(el, "Tap again to delete")) return;
+      armed = null;
+      if (await write(() => S.db.doc("boons/" + id).delete(), "Deleted")) closeSheet();
+      return;
+    }
+    case "boon-claim": {
+      const b = S.boons.find((x) => x.id === id), h = myHero(); if (!b || !h) return;
+      const cost = +b.cost || 1; if (heroTokens(h) < cost) return toast(`Not enough ${tokenWord(2)} yet`);
+      if (!arm(el, "Tap again to spend")) return;
+      armed = null;
+      await write(() => S.db.doc("heroes/" + h.id).update({ spent: [...(h.spent || []), { id: newId(), date: today(), boonId: b.id, name: b.name, cost }] }), `${b.name} ${tv("used", "claimed")}!`);
+      return;
+    }
+    case "new-bounty": return bountyForm();
+    case "edit-bounty": return bountyForm(S.bounties.find((b) => b.id === id));
+    case "del-bounty": {
+      if (!arm(el, "Tap again to delete")) return;
+      armed = null;
+      if (await write(() => S.db.doc("bounties/" + id).delete(), "Deleted")) closeSheet();
+      return;
+    }
+    case "bounty-claim": {
+      const b = S.bounties.find((x) => x.id === id); if (!b) return;
+      const d = today(), h = myHero(); let gain = "";
+      if (await write(async () => {
+        await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h?.id || "", passed: false, history: [{ date: d, by: h?.id || "" }, ...(b.history || [])].slice(0, 60) });
+        gain = await awardXp(+b.xp || XP.bounty, b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
+      })) toast((h ? tv("Done", "Bounty claimed!") : tv("Done. Pick who you are on the XP tab to earn XP.", "Claimed! Choose your hero in the Guild Hall to earn XP.")) + gain);
+      return;
+    }
+    case "bounty-pass": {
+      const b = S.bounties.find((x) => x.id === id), h = myHero(), pass = S.boons.find((x) => x.pass); if (!b || !h || !pass) return;
+      const cost = +pass.cost || 1; if (heroTokens(h) < cost) return;
+      if (!arm(el, `Spend ${cost} ${tokenWord(cost)}?`)) return;
+      armed = null;
+      const d = today();
+      await write(async () => {
+        await S.db.doc("heroes/" + h.id).update({ spent: [...(h.spent || []), { id: newId(), date: d, boonId: pass.id, name: `${pass.name}: ${b.title}`, cost }] });
+        await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h.id, passed: true, history: [{ date: d, by: h.id, passed: true }, ...(b.history || [])].slice(0, 60) });
+      }, tv("Skipped with a pass", "The Pass scroll is spent. Bounty skipped."));
+      return;
+    }
+    case "bounty-undo": {
+      const b = S.bounties.find((x) => x.id === id); if (!b) return;
+      const [, ...rest] = b.history || [], h = heroById(b.doneBy);
+      await write(async () => {
+        if (b.passed && h) { const i = (h.spent || []).map((x) => x.name).lastIndexOf((S.boons.find((x) => x.pass)?.name || "Pass scroll") + ": " + b.title); if (i >= 0) await S.db.doc("heroes/" + h.id).update({ spent: h.spent.filter((_, j) => j !== i) }); }
+        await revokeXp(`bounty:${id}:${periodStart(b.every || "week", b.lastDone)}`);
+        await S.db.doc("bounties/" + id).update({ lastDone: rest[0]?.date || "", doneBy: rest[0]?.by || "", passed: !!rest[0]?.passed, history: rest });
+      }, "Undone");
+      return;
+    }
     case "mode": { const m = MODES[(MODES.indexOf(getMode()) + 1) % 3]; try { localStorage.setItem(MODE_KEY, m); } catch {} applyMode(m); render(); toast(modeLabel(m)); return; }
     case "skin": setSkin(isTavern() ? "classic" : "tavern"); toast(isTavern() ? "Welcome to the tavern" : "Back to the classic look"); return;
     case "done": {
       const t = S.tasks.find((x) => x.id === id); if (!t || !S.db) return;
-      const d = today(), next = addInterval(d, t.every, t.unit);
+      const d = today(), next = addInterval(d, t.every, t.unit), wasOver = t.nextDue && daysUntil(t.nextDue) < 0;
+      let gain = "";
       const history = [d, ...(t.history || [])].slice(0, 24);
       await write(async () => {
         await S.db.doc("tasks/" + id).update({ lastDone: d, nextDue: next, history });
         const it = itemById(t.itemId);
-        if (it) await S.db.doc("items/" + it.id).update({ log: [...(it.log || []), { id: newId(), date: d, what: t.title, cost: "", by: "", task: t.id }] });
-      }, isTavern() ? `Quest complete! It returns ${nice(next)}` : `Logged. Next due ${nice(next)}`);
+        if (it) await S.db.doc("items/" + it.id).update({ log: [...(it.log || []), { id: newId(), date: d, what: t.title, cost: "", by: myHero()?.name || "", task: t.id }] });
+        gain = await awardXp((t.big ? XP.bigQuest : XP.quest) + (wasOver ? XP.overdue : 0), t.title, `quest:${t.id}:${d}`);
+      }) && toast((isTavern() ? `Quest complete! It returns ${nice(next)}` : `Logged. Next due ${nice(next)}`) + gain);
       if (inItem) itemSheet(inItem);
       return;
     }
@@ -1218,7 +1361,7 @@ $("restore-file").addEventListener("change", async (e) => {
   try { data = JSON.parse(await f.text()); } catch {}
   const ok = data && data.app === "homebox" && data.items && typeof data.items === "object" && data.tasks && typeof data.tasks === "object";
   if (!ok) { toast("That file isn't a Homebox backup."); return; }
-  pendingRestore = { items: data.items, tasks: data.tasks, parts: data.parts || {}, projects: data.projects || {}, asFile: S.openingFile ? f.name : "" };
+  pendingRestore = { ...Object.fromEntries(COLS.map((c) => [c, data[c] || {}])), asFile: S.openingFile ? f.name : "" };
   sheet.dataset.back = "";
   if (S.openingFile) {
     S.openingFile = false;
@@ -1241,9 +1384,9 @@ const CAN_FS = typeof window.showSaveFilePicker === "function" && typeof window.
 const FILE = { handle: null, status: "off", savedAt: null, timer: null, queue: Promise.resolve() };
 const FILE_TYPES = [{ description: "Homebox data", accept: { "application/json": [".json"] } }];
 const stable = (v) => Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stable(v[k])).join(",")}}` : JSON.stringify(v ?? null);
-function sigOf(d) { const s = stable({ items: d.items || {}, tasks: d.tasks || {}, parts: d.parts || {}, projects: d.projects || {} }); let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36) + "." + s.length; }
+function sigOf(d) { const s = stable(Object.fromEntries(COLS.map((c) => [c, d[c] || {}]))); let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36) + "." + s.length; }
 const localSig = () => sigOf(localDb.raw());
-const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks, parts: r.parts, projects: r.projects }, null, 2); };
+const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks, parts: r.parts, projects: r.projects, heroes: r.heroes, boons: r.boons, bounties: r.bounties }, null, 2); };
 function parseHomebox(text) {
   try { const d = JSON.parse(text); return d && d.app === "homebox" && d.items && typeof d.items === "object" && d.tasks && typeof d.tasks === "object" ? d : null; } catch { return null; }
 }
@@ -1410,7 +1553,7 @@ function srvRun(fn) {
   SRV.queue = run;
   return run;
 }
-const dataOnly = (r = localDb.raw()) => ({ items: r.items || {}, tasks: r.tasks || {}, parts: r.parts || {}, projects: r.projects || {} });
+const dataOnly = (r = localDb.raw()) => Object.fromEntries(COLS.map((c) => [c, r[c] || {}]));
 const onlyExamples = (d) => Object.values(d).every((col) => Object.values(col).every((x) => x && x.example));
 const deviceName = () => { const ua = navigator.userAgent; return (/Firefox/.test(ua) ? "Firefox" : /Edg\//.test(ua) ? "Edge" : /Chrome/.test(ua) ? "Chrome" : /Safari/.test(ua) ? "Safari" : "Browser") + (/Android/.test(ua) ? " on Android" : /iPhone|iPad/.test(ua) ? " on iOS" : /Windows/.test(ua) ? " on Windows" : /Mac/.test(ua) ? " on Mac" : ""); };
 
@@ -1784,23 +1927,184 @@ function healthSheet() {
     <footer><div class="r"><button class="btn" data-act="close">Close</button></div></footer></div>`, null);
 }
 
+/* ---------- heroes, XP, boons and the Bounty Board ---------- */
+const HERO_KEY = "homebox-hero";
+const XP = { bounty: 10, quest: 25, bigQuest: 50, overdue: 10, objective: 15, campaign: 100 };
+const levelNeed = (lvl) => 100 + 25 * (lvl - 1);
+function levelOf(total) { let lvl = 1, left = Math.max(0, total); while (left >= levelNeed(lvl)) { left -= levelNeed(lvl); lvl++; } return { lvl, into: left, need: levelNeed(lvl) }; }
+const heroXp = (h) => (h.xp || []).reduce((n, e) => n + (+e.amount || 0), 0);
+const heroSpent = (h) => (h.spent || []).reduce((n, s) => n + (+s.cost || 0), 0);
+const heroTokens = (h) => levelOf(heroXp(h)).lvl - 1 - heroSpent(h);
+const DEFAULT_TITLES = [[20, "Lord of the Keep"], [15, "Warden"], [10, "Knight"], [5, "Squire"], [3, "Adventurer"], [1, "Novice"]];
+function heroTitle(h) {
+  const lvl = levelOf(heroXp(h)).lvl;
+  const custom = (h.titles || []).filter((t) => t.level <= lvl && t.text).sort((a, b) => b.level - a.level)[0];
+  return custom ? custom.text : DEFAULT_TITLES.find(([l]) => lvl >= l)[1];
+}
+const heroById = (id) => S.heroes.find((h) => h.id === id);
+const myHeroId = () => { try { return localStorage.getItem(HERO_KEY) || ""; } catch { return ""; } };
+const myHero = () => heroById(myHeroId()) || null;
+function setMyHero(id) { try { if (id) localStorage.setItem(HERO_KEY, id); else localStorage.removeItem(HERO_KEY); } catch {} render(); }
+const tokenWord = (n) => n === 1 ? tv("reward token", "boon token") : tv("reward tokens", "boon tokens");
+
+// Adds XP to this device's hero. Returns the toast suffix, e.g. " +25 XP".
+async function awardXp(amount, why, ref) {
+  const h = myHero(); if (!h || !S.db || !amount) return "";
+  if (ref && (h.xp || []).some((e) => e.ref === ref)) return "";
+  const before = levelOf(heroXp(h)).lvl;
+  const xp = [...(h.xp || []), { id: newId(), date: today(), amount, why, ref: ref || "" }];
+  await S.db.doc("heroes/" + h.id).update({ xp });
+  const after = levelOf(xp.reduce((n, e) => n + (+e.amount || 0), 0)).lvl;
+  if (after > before) setTimeout(() => levelUpSheet(h.id, after), 900);
+  return ` +${amount} XP`;
+}
+// Takes back XP given for something that was undone (an unchecked objective).
+async function revokeXp(ref) {
+  for (const h of S.heroes) if ((h.xp || []).some((e) => e.ref === ref)) await S.db.doc("heroes/" + h.id).update({ xp: h.xp.filter((e) => e.ref !== ref) });
+}
+function levelUpSheet(heroId, lvl) {
+  const h = heroById(heroId); if (!h) return;
+  // Wait until the open sheet is closed, so a level-up never replaces what you're looking at.
+  if (dlg.open) { toast(`Level up! ${h.name} reached level ${lvl}`); S.levelUp = [heroId, lvl]; return; }
+  sheet.dataset.back = "";
+  openSheet(`<form id="title-form" data-id="${esc(heroId)}" data-level="${lvl}">
+    <h2>${tv("Level up!", "Level up, adventurer!")}</h2>
+    <p><b>${esc(h.name)}</b> reached <b>level ${lvl}</b> and earned a ${tokenWord(1)}. Spend it in ${tv("the rewards list", "the Boon Shop")} on the ${tv("XP", "Guild Hall")} tab.</p>
+    <div class="fields"><label class="f full">Claim a title for level ${lvl} (optional)<input name="text" maxlength="40" placeholder="${esc(heroTitle(h))}"></label></div>
+    <footer><div class="r"><button type="button" class="btn" data-act="close">Later</button><button class="btn primary" type="submit">Save title</button></div></footer>
+  </form>`);
+}
+function titleForm(heroId) {
+  const h = heroById(heroId); if (!h) return;
+  const lvl = levelOf(heroXp(h)).lvl;
+  openSheet(`<form id="title-form" data-id="${esc(heroId)}" data-level="${lvl}">
+    <h2>Change title</h2>
+    <p>Pick the title shown next to ${esc(h.name)}. Leave it blank to use the default for level ${lvl}.</p>
+    <div class="fields"><label class="f full">Title<input name="text" maxlength="40" value="${esc((h.titles || []).find((t) => t.level === lvl)?.text || "")}" placeholder="${esc(DEFAULT_TITLES.find(([l]) => lvl >= l)[1])}"></label></div>
+    <footer><div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Save title</button></div></footer>
+  </form>`);
+}
+function heroForm(h = {}) {
+  openSheet(`<form id="hero-form" data-id="${esc(h.id || "")}">
+    <h2>${h.id ? tv("Edit person", "Edit hero") : tv("Add a person", "A new hero joins the guild")}</h2>
+    <div class="fields"><label class="f full">Name<input name="name" maxlength="30" value="${esc(h.name)}" placeholder="Red" required></label></div>
+    <footer>${h.id ? `<button type="button" class="btn danger" data-act="del-hero" data-id="${h.id}">Remove</button>` : ""}<div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Save</button></div></footer>
+  </form>`);
+}
+function boonForm(b = {}) {
+  openSheet(`<form id="boon-form" data-id="${esc(b.id || "")}">
+    <h2>${b.id ? tv("Edit reward", "Edit boon") : tv("Add a reward", "Add a boon")}</h2>
+    <div class="fields">
+      <label class="f full">Name<input name="name" maxlength="60" value="${esc(b.name)}" placeholder="Pick takeout night" required></label>
+      <label class="f">Cost in tokens<input name="cost" type="number" min="1" max="20" value="${esc(b.cost ?? 1)}" required></label>
+      <label class="f full">Details<textarea name="desc" placeholder="What the household agrees this means.">${esc(b.desc)}</textarea></label>
+    </div>
+    <footer>${b.id ? `<button type="button" class="btn danger" data-act="del-boon" data-id="${b.id}">Delete</button>` : ""}<div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Save</button></div></footer>
+  </form>`);
+}
+const DEFAULT_BOONS = [
+  { name: "Pass scroll", cost: 1, pass: true, desc: "Skip one bounty (chore) this round. Use it from the Bounty Board." },
+  { name: "Inspiration", cost: 1, desc: "One Inspiration point at your next D&D session, with the DM's blessing." },
+];
+async function seedBoons() { if (S.boons.length) return; for (const b of DEFAULT_BOONS) await S.db.collection("boons").doc().set({ ...b, createdAt: new Date().toISOString() }); }
+
+/* Bounties: chores that reset every day, week or month. */
+const BOUNTY_EVERY = { day: ["Daily", "Daily bounties"], week: ["Weekly", "Weekly bounties"], month: ["Monthly", "Monthly bounties"] };
+function periodStart(every, d = today()) {
+  const x = parse(d);
+  if (every === "week") x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  if (every === "month") x.setDate(1);
+  return fmt(x);
+}
+const bountyDone = (b) => !!b.lastDone && b.lastDone >= periodStart(b.every || "week");
+function bountyForm(b = {}) {
+  openSheet(`<form id="bounty-form" data-id="${esc(b.id || "")}">
+    <h2>${b.id ? tv("Edit chore", "Edit bounty") : tv("Add a chore", "Post a bounty")}</h2>
+    <div class="fields">
+      <label class="f full">${tv("Chore", "Bounty")}<input name="title" maxlength="80" value="${esc(b.title)}" placeholder="Take out the trash" required></label>
+      <label class="f">Resets<select name="every">${Object.entries(BOUNTY_EVERY).map(([k, [l]]) => `<option value="${k}"${(b.every || "week") === k ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label class="f">XP<input name="xp" type="number" min="1" max="100" value="${esc(b.xp ?? XP.bounty)}" required></label>
+      <label class="f full">Notes<textarea name="notes" placeholder="Bins go out Tuesday night.">${esc(b.notes)}</textarea></label>
+    </div>
+    <footer>${b.id ? `<button type="button" class="btn danger" data-act="del-bounty" data-id="${b.id}">Delete</button>` : ""}<div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Save</button></div></footer>
+  </form>`);
+}
+function renderBounties(ready) {
+  const box = $("bounties-list"); if (!box) return;
+  if (!ready) { box.innerHTML = ""; return; }
+  const me = myHero();
+  const who = !S.heroes.length ? `<div class="notice"><span>${tv("Add the people in your house on the XP tab, so each chore counts for whoever did it.", "Add your party in the Guild Hall, so each bounty counts for whoever claims it.")}</span><button class="btn small primary" data-act="new-hero">${tv("Add a person", "Add a hero")}</button></div>`
+    : !me ? `<div class="notice"><span>${tv("Who's using this device? Pick yourself so your chores earn XP.", "Who holds this device? Pick your hero so claimed bounties earn XP.")}</span><button class="btn small primary" data-act="go-guild">${tv("Pick me", "Choose hero")}</button></div>` : "";
+  if (!S.bounties.length) { box.innerHTML = who + `<div class="empty">${tv("No chores yet. Add the regular jobs around the house, like trash night or the litter box.", "The board is empty. Post the regular jobs around the keep, like trash night or the litter box.")}</div>`; return; }
+  const pass = S.boons.find((b) => b.pass);
+  const row = (b) => {
+    const done = bountyDone(b), by = done && b.doneBy ? heroById(b.doneBy)?.name || "" : "";
+    const canPass = !done && me && pass && heroTokens(me) >= (+pass.cost || 1);
+    return `<div class="row ${done ? "ok" : ""}">
+      <span class="stripe"></span>
+      <div class="main"><div class="title">${esc(b.title)}</div>
+        <div class="meta">${done ? `<span>${b.passed ? tv("Skipped with a pass", "Skipped with a Pass scroll") : tv("Done", "Claimed")}${by ? " by " + esc(by) : ""} · ${esc(nice(b.lastDone))}</span>` : `<span>${BOUNTY_EVERY[b.every || "week"][0]}</span>`}<span>${+b.xp || XP.bounty} XP</span>${b.notes ? `<span>${esc(b.notes)}</span>` : ""}</div></div>
+      <div class="side">${done ? `<button class="btn small" data-act="bounty-undo" data-id="${b.id}">Undo</button>` : `<button class="btn small primary" data-act="bounty-claim" data-id="${b.id}">${tv("Done", "Claim bounty")}</button>${canPass ? `<button class="btn small" data-act="bounty-pass" data-id="${b.id}" title="Spend ${+pass.cost || 1} ${tokenWord(+pass.cost || 1)}">${tv("Use a pass", "Use Pass scroll")}</button>` : ""}`}<button class="btn small" data-act="edit-bounty" data-id="${b.id}">Edit</button></div>
+    </div>`;
+  };
+  box.innerHTML = who + Object.entries(BOUNTY_EVERY).map(([k, [, label]]) => {
+    const list = S.bounties.filter((b) => (b.every || "week") === k).sort((a, b) => bountyDone(a) - bountyDone(b) || a.title.localeCompare(b.title));
+    if (!list.length) return "";
+    const open = list.filter((b) => !bountyDone(b)).length;
+    return `<h3 class="grp">${tv(label.replace("bounties", "chores"), label)} · ${open} ${tv("left", "open")}</h3><div class="list">${list.map(row).join("")}</div>`;
+  }).join("");
+}
+function renderGuild(ready) {
+  const box = $("guild-list"); if (!box) return;
+  if (!ready) { box.innerHTML = ""; return; }
+  const me = myHeroId();
+  const heroes = [...S.heroes].sort((a, b) => heroXp(b) - heroXp(a));
+  const card = (h) => {
+    const total = heroXp(h), L = levelOf(total), tok = heroTokens(h), pct = Math.round(100 * L.into / L.need);
+    const recent = [...(h.xp || [])].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 5);
+    const spent = [...(h.spent || [])].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 5);
+    return `<div class="hero-card${h.id === me ? " me" : ""}">
+      <div class="hero-top"><div><div class="hero-name">${esc(h.name)}${h.id === me ? ` <span class="pill">${tv("This device", "You")}</span>` : ""}</div>
+        <div class="hero-title">Level ${L.lvl} · ${esc(heroTitle(h))}</div></div>
+        <div class="hero-tok"><b>${tok}</b><span>${tokenWord(tok)}</span></div></div>
+      <div class="xpbar" role="progressbar" aria-valuenow="${L.into}" aria-valuemax="${L.need}" aria-label="XP to next level"><i style="width:${pct}%"></i></div>
+      <div class="sm">${L.into} / ${L.need} XP to level ${L.lvl + 1} · ${total} XP total</div>
+      ${recent.length ? `<div class="log">${recent.map((e) => `<div class="entry"><span class="due">${esc(nice(e.date))}</span><span class="what">${esc(e.why)}</span><b>+${+e.amount}</b></div>`).join("")}</div>` : `<p class="sm">${tv("No XP yet. Finish maintenance, chores or project steps to earn some.", "No XP yet. Complete quests, claim bounties or clear campaign objectives.")}</p>`}
+      ${spent.length ? `<div class="sm"><b>${tv("Rewards used", "Boons claimed")}:</b> ${spent.map((s) => `${esc(s.name)} (${esc(nice(s.date))})`).join(", ")}</div>` : ""}
+      <div class="hero-btns">${h.id === me ? `<button class="btn small" data-act="hero-me" data-id="">${tv("Not me", "Not my hero")}</button>` : `<button class="btn small primary" data-act="hero-me" data-id="${h.id}">${tv("This is me", "This is my hero")}</button>`}<button class="btn small" data-act="hero-title" data-id="${h.id}">Change title</button><button class="btn small" data-act="edit-hero" data-id="${h.id}">Edit</button></div>
+    </div>`;
+  };
+  const mine = myHero(), mineTok = mine ? heroTokens(mine) : 0;
+  const shop = S.boons.map((b) => `<div class="row"><span class="stripe"></span>
+      <div class="main"><div class="title">${esc(b.name)}</div><div class="meta"><span>${+b.cost || 1} ${tokenWord(+b.cost || 1)}</span>${b.desc ? `<span>${esc(b.desc)}</span>` : ""}</div></div>
+      <div class="side">${b.pass ? "" : `<button class="btn small primary" data-act="boon-claim" data-id="${b.id}"${mine && mineTok >= (+b.cost || 1) ? "" : " disabled"}>${tv("Use", "Claim")}</button>`}<button class="btn small" data-act="edit-boon" data-id="${b.id}">Edit</button></div></div>`).join("");
+  box.innerHTML = `${heroes.length ? `<div class="hero-grid">${heroes.map(card).join("")}</div>` : `<div class="empty">${tv("Add each person in the house. Finishing maintenance, chores and project steps earns XP, every level earns a reward token, and tokens buy rewards you all agree on.", "Add each member of your party. Quests, bounties and campaign objectives earn XP, every level earns a boon token, and tokens buy boons from the shop below.")}</div>`}
+    <div class="toolbar"><button class="btn" data-act="new-hero">${tv("Add a person", "Add a hero")}</button></div>
+    <h3 class="grp">${tv("Rewards", "Boon Shop")}</h3>
+    <p class="sm">${mine ? `${esc(mine.name)} has ${mineTok} ${tokenWord(mineTok)} to spend.` : tv("Pick who you are above to use rewards.", "Choose your hero above to claim boons.")} ${tv("Earn XP", "XP")}: ${tv("chore", "bounty")} ${XP.bounty}, ${tv("maintenance", "quest")} ${XP.quest} (big ${XP.bigQuest}), +${XP.overdue} ${tv("when it was overdue", "for an urgent quest")}, ${tv("project step", "objective")} ${XP.objective}, ${tv("finished project", "campaign won")} ${XP.campaign}.</p>
+    ${S.boons.length ? `<div class="list">${shop}</div>` : ""}
+    <div class="toolbar"><button class="btn" data-act="new-boon">${tv("Add a reward", "Add a boon")}</button>${S.boons.length ? "" : `<button class="btn" data-act="seed-boons">Add Pass scroll and Inspiration</button>`}</div>`;
+}
+
+dlg.addEventListener("close", () => { const l = S.levelUp; S.levelUp = null; if (l) setTimeout(() => levelUpSheet(...l), 250); });
 /* ---------- local storage (this browser only) ---------- */
 const KEY = "homebox:v1", META = "homebox:meta";
-const blank = () => ({ items: {}, tasks: {}, parts: {}, projects: {} });
-function readStore() { try { const d = JSON.parse(localStorage.getItem(KEY)); return d && d.items && d.tasks ? { parts: {}, projects: {}, ...d } : null; } catch { return null; } }
+const COLS = ["items", "tasks", "parts", "projects", "heroes", "boons", "bounties"];
+const blank = () => Object.fromEntries(COLS.map((c) => [c, {}]));
+function readStore() { try { const d = JSON.parse(localStorage.getItem(KEY)); return d && d.items && d.tasks ? { ...blank(), ...d } : null; } catch { return null; } }
 function meta() { try { return JSON.parse(localStorage.getItem(META)) || {}; } catch { return {}; } }
 function setMeta(patch) { try { localStorage.setItem(META, JSON.stringify({ ...meta(), ...patch })); } catch {} }
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const localDb = (() => {
   let store = readStore() || blank();
-  const listeners = { items: [], tasks: [], parts: [], projects: [] };
+  const listeners = Object.fromEntries(COLS.map((c) => [c, []]));
   const emit = (col) => { const docs = Object.entries(store[col]).map(([id, d]) => ({ id, data: () => d })); listeners[col].forEach((fn) => fn({ docs })); };
   function commit(mutate) {
     const before = JSON.stringify(store);
     mutate();
     try { localStorage.setItem(KEY, JSON.stringify(store)); }
     catch (e) { store = JSON.parse(before); throw e; }
-    emit("items"); emit("tasks"); emit("parts"); emit("projects");
+    COLS.forEach(emit);
     onCommit.forEach((fn) => fn());
   }
   const ref = (col, id) => ({
@@ -1809,12 +2113,12 @@ const localDb = (() => {
     async update(d) { commit(() => { store[col][id] = { ...store[col][id], ...JSON.parse(JSON.stringify(d)) }; }); },
     async delete() { commit(() => { delete store[col][id]; }); },
   });
-  window.addEventListener("storage", (e) => { if (e.key === KEY) { store = readStore() || blank(); emit("items"); emit("tasks"); emit("parts"); emit("projects"); } });
+  window.addEventListener("storage", (e) => { if (e.key === KEY) { store = readStore() || blank(); COLS.forEach(emit); } });
   return {
     doc(path) { const [col, id] = path.split("/"); return ref(col, id); },
     collection(col) { return { doc: (id) => ref(col, id || newId()), onSnapshot(fn) { listeners[col].push(fn); setTimeout(() => emit(col)); return () => {}; } }; },
     raw: () => JSON.parse(JSON.stringify(store)),
-    async replace(next) { commit(() => { store = { items: { ...next.items }, tasks: { ...next.tasks }, parts: { ...(next.parts || {}) }, projects: { ...(next.projects || {}) } }; }); },
+    async replace(next) { commit(() => { store = Object.fromEntries(COLS.map((c) => [c, { ...(next[c] || {}) }])); }); },
     isNew: () => readStore() === null,
   };
 })();
@@ -1855,6 +2159,7 @@ render();
   localDb.collection("tasks").onSnapshot((s) => { S.tasks = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.tasks = true; render(); refreshSheet(); });
   localDb.collection("parts").onSnapshot((s) => { S.parts = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
   localDb.collection("projects").onSnapshot((s) => { S.projects = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
+  for (const c of ["heroes", "boons", "bounties"]) localDb.collection(c).onSnapshot((s) => { S[c] = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); });
   try { navigator.storage?.persist?.(); } catch {}
   try { if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {}); } catch {}
   await srvInit(); render();
