@@ -629,7 +629,6 @@ function taskRow(t, showItem = true) {
     </div>
     <div class="side">
       <button class="btn small primary" data-act="done" data-id="${t.id}">${tv("Done today", "Complete quest")}</button>
-      ${canPassX(t) ? `<button class="btn small" data-act="quest-pass" data-id="${t.id}" title="Skip this round. Spends ${passCost(t)} ${tokenWord(passCost(t))}.">${tv("Use a pass", "Use Pass scroll")} (${passCost(t)})</button>` : ""}
       <a class="btn small" href="${esc(calLink(t))}" target="_blank" rel="noopener">Add to calendar</a>
       <button class="btn small" data-act="edit-task" data-id="${t.id}">Edit</button>
     </div>
@@ -1239,21 +1238,6 @@ document.addEventListener("click", async (e) => {
         await S.db.doc("heroes/" + h.id).update({ spent: [...(h.spent || []), { id: newId(), date: d, boonId: pass.id, name: `${pass.name}: ${b.title}`, cost }] });
         await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h.id, passed: true, history: [{ date: d, by: h.id, passed: true }, ...(b.history || [])].slice(0, 60) });
       }, tv("Skipped with a pass", "The Pass scroll is spent. Bounty skipped."));
-      return;
-    }
-    case "quest-pass": {
-      const t = S.tasks.find((x) => x.id === id), h = myHero(), pass = S.boons.find((x) => x.pass); if (!t || !h || !pass) return;
-      const cost = passCost(t); if (heroTokens(h) < cost) return;
-      if (!arm(el, `Spend ${cost} ${tokenWord(cost)}?`)) return;
-      armed = null;
-      const d = today(), next = addInterval(d, t.every, t.unit);
-      await write(async () => {
-        await S.db.doc("heroes/" + h.id).update({ spent: [...(h.spent || []), { id: newId(), date: d, boonId: pass.id, name: `${pass.name}: ${t.title}`, cost }] });
-        await S.db.doc("tasks/" + id).update({ nextDue: next });
-        const it = itemById(t.itemId);
-        if (it) await S.db.doc("items/" + it.id).update({ log: [...(it.log || []), { id: newId(), date: d, what: `${t.title} (skipped with a ${pass.name})`, cost: "", by: h.name, task: t.id }] });
-      }, `${tv("Skipped", "The Pass scroll is spent")}. Next due ${nice(next)}`);
-      if (inItem) itemSheet(inItem);
       return;
     }
     case "bounty-undo": {
@@ -2031,7 +2015,7 @@ function boonForm(b = {}) {
   </form>`);
 }
 const DEFAULT_BOONS = [
-  { name: "Pass scroll", cost: 1, pass: true, desc: "Skip one bounty or quest this round. Costs 1 token per star. Use it from the Bounty Board or Quest Log." },
+  { name: "Pass scroll", cost: 1, pass: true, desc: "Skip one bounty this round. Costs 1 token per star. Use it from the Bounty Board." },
   { name: "Inspiration", cost: 1, desc: "One Inspiration point at your next D&D session, with the DM's blessing." },
 ];
 async function seedBoons() { if (S.boons.length) return; for (const b of DEFAULT_BOONS) await S.db.collection("boons").doc().set({ ...b, createdAt: new Date().toISOString() }); }
