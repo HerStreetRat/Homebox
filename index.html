@@ -1714,7 +1714,7 @@ function spendEntries() {
   const out = [];
   for (const it of S.items) {
     const area = it.location || "No location";
-    if (money(it.price)) out.push({ date: it.purchaseDate || "", amount: money(it.price), kind: "buy", what: "Bought " + itemName(it), itemId: it.id, area });
+    if (money(it.price)) out.push({ date: it.purchaseDate || it.installDate || "", amount: money(it.price), kind: "buy", what: "Bought " + itemName(it), itemId: it.id, area });
     for (const l of it.log || []) if (money(l.cost)) out.push({ date: l.date || "", amount: money(l.cost), kind: "fix", what: `${l.what} · ${itemName(it)}`, itemId: it.id, area });
   }
   for (const pj of S.projects) for (const l of pj.log || []) if (money(l.cost)) out.push({ date: l.date || "", amount: money(l.cost), kind: "proj", what: `${l.what} · ${pj.name}`, projectId: pj.id, area: pj.area || "No location" });
