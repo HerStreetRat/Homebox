@@ -457,6 +457,11 @@ function applySkin(skin) {
 }
 function setSkin(skin) { try { localStorage.setItem(SKIN_KEY, skin); } catch {} applySkin(skin); render(); }
 try { if (localStorage.getItem(SKIN_KEY) === "tavern") applySkin("tavern"); } catch {}
+const MODE_KEY = "homebox-mode", MODES = ["auto", "light", "dark"];
+const getMode = () => { try { const m = localStorage.getItem(MODE_KEY); return MODES.includes(m) ? m : "auto"; } catch { return "auto"; } };
+function applyMode(m) { if (m === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = m; }
+const modeLabel = (m = getMode()) => ({ auto: tv("Light/dark: Auto", "Day & night: Auto"), light: tv("Always light", "Always day"), dark: tv("Always dark", "Always night") })[m];
+applyMode(getMode());
 
 
 /* ---------- dates (all stored as YYYY-MM-DD, local) ---------- */
@@ -1097,6 +1102,7 @@ document.addEventListener("click", async (e) => {
       if (!$("i-purchase").value) toast("No purchase date yet, so counted from today");
       return;
     }
+    case "mode": { const m = MODES[(MODES.indexOf(getMode()) + 1) % 3]; try { localStorage.setItem(MODE_KEY, m); } catch {} applyMode(m); render(); toast(modeLabel(m)); return; }
     case "skin": setSkin(isTavern() ? "classic" : "tavern"); toast(isTavern() ? "Welcome to the tavern" : "Back to the classic look"); return;
     case "done": {
       const t = S.tasks.find((x) => x.id === id); if (!t || !S.db) return;
@@ -1265,6 +1271,7 @@ function renderDataFoot(m, unsaved) {
     btns = `<button class="btn small primary" data-act="file-setup" id="btn-file-setup">Keep data in a file…</button><button class="btn small" data-act="backup" id="btn-backup">Download backup</button><button class="btn small" data-act="restore" id="btn-restore">Restore from backup</button>${csv}`;
   }
   btns += `<button class="btn small skin-switch" data-act="skin" id="btn-skin">${isTavern() ? "Classic look" : "Tavern look"}</button>`;
+  btns += `<button class="btn small" data-act="mode" id="btn-mode" title="Switch between automatic, light and dark">${modeLabel()}</button>`;
   $("datafoot").innerHTML = `<span id="data-note">${note}</span><span class="actions">${btns}</span>`;
 }
 
