@@ -396,7 +396,10 @@ nav.tabs button { font-size: 14px !important; padding: 7px 10px !important; flex
     <button role="tab" id="tab-spending" data-view="spending" aria-selected="false" data-tv="Treasury">Spending</button>
   </nav>
 
-  <section id="view-upcoming"></section>
+  <section id="view-upcoming">
+    <div class="toolbar"><input id="uq" type="search" placeholder="Search tasks, items, rooms, notes…" aria-label="Search maintenance"></div>
+    <div id="upcoming-list"></div>
+  </section>
   <section id="view-items" hidden>
     <div class="toolbar">
       <input id="q" type="search" placeholder="Search brand, product, specs, parts…" aria-label="Search equipment">
@@ -636,13 +639,17 @@ function taskRow(t, showItem = true) {
 }
 
 function renderUpcoming(ready) {
-  const el = $("view-upcoming");
+  const el = $("upcoming-list");
+  $("uq").closest(".toolbar").hidden = !ready || !S.tasks.length;
   if (!ready) { el.innerHTML = S.db === false ? "" : `<div class="empty" style="margin-top:16px">Loading your maintenance schedule…</div>`; return; }
   if (!S.tasks.length) {
     el.innerHTML = `<div class="empty" style="margin-top:16px"><strong>No maintenance scheduled yet</strong>Add a recurring task, like a filter change every 3 months or winterizing every October.<br><br><button class="btn primary" data-act="new-task" id="btn-empty-task">Add maintenance</button></div>`;
     return;
   }
-  const sorted = [...S.tasks].sort((a, b) => (a.nextDue || "").localeCompare(b.nextDue || ""));
+  const q = $("uq").value.trim().toLowerCase();
+  const hay = (t) => { const it = itemById(t.itemId) || {}; return [t.title, t.notes, itemName(it), it.location, realmName(it.location), it.type].join(" ").toLowerCase(); };
+  const sorted = [...S.tasks].filter((t) => !q || q.split(/\s+/).every((w) => hay(t).includes(w))).sort((a, b) => (a.nextDue || "").localeCompare(b.nextDue || ""));
+  if (!sorted.length) { el.innerHTML = `<div class="empty">${tv("No maintenance matches", "No quests match")} "${esc(q)}".</div>`; return; }
   const groups = [
     [tv("Overdue", "Urgent quests"), sorted.filter((t) => daysUntil(t.nextDue) < 0)],
     [tv("Next 15 days", "Upcoming quests"), sorted.filter((t) => { const n = daysUntil(t.nextDue); return n >= 0 && n <= SOON_DAYS; })],
@@ -1339,6 +1346,7 @@ document.addEventListener("click", async (e) => {
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".row.clickable")) { e.preventDefault(); e.target.click(); }
 });
+$("uq").addEventListener("input", () => renderUpcoming(S.loaded.items && S.loaded.tasks));
 for (const id of ["q", "f-type", "f-loc"]) $(id).addEventListener("input", () => renderItems(S.loaded.items && S.loaded.tasks));
 for (const id of ["jq", "f-jstatus"]) $(id).addEventListener("input", () => renderProjects(S.loaded.items && S.loaded.tasks));
 for (const id of ["pq", "f-pcat"]) $(id).addEventListener("input", () => renderParts(S.loaded.items && S.loaded.tasks));
