@@ -1934,7 +1934,7 @@ function healthSheet() {
 
 /* ---------- heroes, XP, boons and the Bounty Board ---------- */
 const HERO_KEY = "homebox-hero";
-const XP = { star: 10, overdue: 10, objective: 15, campaign: 50 };
+const XP = { star: 10, overdue: 10, objective: 0, campaign: 50 }; // objectives give no XP (Red: the campaign total is enough)
 // Difficulty: 1 to 3 stars, 10 XP per star. Older records: "big" tasks count as 3, a bounty's old XP number is rounded to stars.
 const starsOf = (x) => Math.min(3, Math.max(1, +x.stars || (x.big ? 3 : x.xp ? Math.round(+x.xp / 10) : 1)));
 const starText = (n) => "★".repeat(n) + "☆".repeat(3 - n);
@@ -2090,7 +2090,7 @@ function renderGuild(ready) {
   box.innerHTML = `${heroes.length ? `<div class="hero-grid">${heroes.map(card).join("")}</div>` : `<div class="empty">${tv("Add each person in the house. Finishing maintenance, chores and project steps earns XP, every level earns a reward token, and tokens buy rewards you all agree on.", "Add each member of your party. Quests, bounties and campaign objectives earn XP, every level earns a boon token, and tokens buy boons from the shop below.")}</div>`}
     <div class="toolbar"><button class="btn" data-act="new-hero">${tv("Add a person", "Add a hero")}</button></div>
     <h3 class="grp">${tv("Rewards", "Boon Shop")}</h3>
-    <p class="sm">${mine ? `${esc(mine.name)} has ${mineTok} ${tokenWord(mineTok)} to spend.` : tv("Pick who you are above to use rewards.", "Choose your hero above to claim boons.")} ${tv("Earn XP", "XP")}: ${tv("chores and maintenance", "bounties and quests")} ★ ${XP.star}, ★★ ${2 * XP.star}, ★★★ ${3 * XP.star}, +${XP.overdue} ${tv("when it was overdue", "for an urgent quest")}, ${tv("project step", "objective")} ${XP.objective}, ${tv("finished project", "campaign won")} ${XP.campaign}.</p>
+    <p class="sm">${mine ? `${esc(mine.name)} has ${mineTok} ${tokenWord(mineTok)} to spend.` : tv("Pick who you are above to use rewards.", "Choose your hero above to claim boons.")} ${tv("Earn XP", "XP")}: ${tv("chores and maintenance", "bounties and quests")} ★ ${XP.star}, ★★ ${2 * XP.star}, ★★★ ${3 * XP.star}, +${XP.overdue} ${tv("when it was overdue", "for an urgent quest")}, ${tv("finished project", "campaign won")} ${XP.campaign}.</p>
     ${S.boons.length ? `<div class="list">${shop}</div>` : ""}
     <div class="toolbar"><button class="btn" data-act="new-boon">${tv("Add a reward", "Add a boon")}</button>${S.boons.length ? "" : `<button class="btn" data-act="seed-boons">Add Pass scroll and Inspiration</button>`}</div>`;
 }
