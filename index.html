@@ -353,7 +353,7 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
   <div class="strip" id="strip">
     <div><b id="s-items">–</b><span data-tv="In the inventory">Items</span></div>
     <div class="over"><b><svg class="d20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" opacity=".18" d="M12 1.5 21.5 7v10L12 22.5 2.5 17V7z"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M12 1.5 21.5 7v10L12 22.5 2.5 17V7zM12 1.5 7 9.5h10zM7 9.5 2.5 17M17 9.5 21.5 17M7 9.5 12 17l5-7.5M12 17v5.5M2.5 17H12h9.5M2.5 7 7 9.5M21.5 7 17 9.5"/></svg><span id="s-over">–</span></b><span data-tv="Urgent quests">Overdue</span></div>
-    <div class="soon"><b id="s-soon">–</b><span data-tv="Quests this month">Due in 30 days</span></div>
+    <div class="soon"><b id="s-soon">–</b><span data-tv="Quests this fortnight">Due in 15 days</span></div>
     <div><b id="s-warr">–</b><span data-tv="Wards fading">Warranties ending</span></div>
   </div>
 
@@ -491,7 +491,8 @@ function rel(s) {
   if (n < 45) return `in ${n} days`;
   return nice(s);
 }
-const dueClass = (s) => { const n = daysUntil(s); return n < 0 ? "over" : n <= 30 ? "soon" : "ok"; };
+const SOON_DAYS = 15;
+const dueClass = (s) => { const n = daysUntil(s); return n < 0 ? "over" : n <= SOON_DAYS ? "soon" : "ok"; };
 
 function warranty(it) {
   if (!it.warrantyEnd) return { cls: "none", text: "No warranty info" };
@@ -519,7 +520,7 @@ const itemById = (id) => S.items.find((i) => i.id === id);
 function render() {
   const ready = S.loaded.items && S.loaded.tasks;
   const over = S.tasks.filter((t) => t.nextDue && daysUntil(t.nextDue) < 0).length;
-  const soon = S.tasks.filter((t) => t.nextDue && daysUntil(t.nextDue) >= 0 && daysUntil(t.nextDue) <= 30).length;
+  const soon = S.tasks.filter((t) => t.nextDue && daysUntil(t.nextDue) >= 0 && daysUntil(t.nextDue) <= SOON_DAYS).length;
   const warr = S.items.filter((i) => warranty(i).cls === "soon").length;
   $("s-items").textContent = ready ? S.items.length : "–";
   $("s-over").textContent = ready ? over : "–";
@@ -604,8 +605,8 @@ function renderUpcoming(ready) {
   const sorted = [...S.tasks].sort((a, b) => (a.nextDue || "").localeCompare(b.nextDue || ""));
   const groups = [
     [tv("Overdue", "Urgent quests"), sorted.filter((t) => daysUntil(t.nextDue) < 0)],
-    [tv("Next 30 days", "Upcoming quests"), sorted.filter((t) => { const n = daysUntil(t.nextDue); return n >= 0 && n <= 30; })],
-    [tv("Later", "Quests on the horizon"), sorted.filter((t) => daysUntil(t.nextDue) > 30)],
+    [tv("Next 15 days", "Upcoming quests"), sorted.filter((t) => { const n = daysUntil(t.nextDue); return n >= 0 && n <= SOON_DAYS; })],
+    [tv("Later", "Quests on the horizon"), sorted.filter((t) => daysUntil(t.nextDue) > SOON_DAYS)],
   ];
   el.innerHTML = groups.filter(([, l]) => l.length).map(([h, l]) =>
     `<div class="group"><h3>${h} · ${l.length}</h3><div class="list">${l.map((t) => taskRow(t)).join("")}</div></div>`).join("");
