@@ -426,7 +426,7 @@ nav.tabs button { font-size: 14px !important; padding: 7px 10px !important; flex
   </section>
 
   <section id="view-bounties" hidden>
-    <div class="toolbar"><button class="btn primary" data-act="new-bounty" data-tv="Post a bounty">Add a chore</button></div>
+    <div class="toolbar"><button class="btn primary" data-act="new-bounty" data-tv="Post a bounty">Add a chore</button><button class="btn" data-act="bounty-list" data-tv="Post from a list">Add from a list</button></div>
     <div id="bounties-list"></div>
   </section>
   <section id="view-guild" hidden><div id="guild-list"></div></section>
@@ -1092,6 +1092,14 @@ document.addEventListener("submit", async (e) => {
     if (await write(() => ref.set({ ...(prev || { createdAt: new Date().toISOString() }), name: d.name, cost: Math.max(1, parseInt(d.cost, 10) || 1), desc: d.desc }), "Saved")) closeSheet();
     return;
   }
+  if (f.id === "bounty-list-form") {
+    const have = new Set(S.bounties.map((b) => b.title.trim().toLowerCase()));
+    const list = parseBountyList(formData(f).list).filter((b) => !have.has(b.title.toLowerCase()) && (have.add(b.title.toLowerCase()), true));
+    if (!list.length) return closeSheet();
+    const now = new Date().toISOString();
+    if (await write(async () => { for (const b of list) await S.db.collection("bounties").doc().set({ ...b, notes: "", history: [], lastDone: "", createdAt: now }); }, `${list.length} ${tv("chores added", "bounties posted")}`)) closeSheet();
+    return;
+  }
   if (f.id === "bounty-form") {
     const d = formData(f), prev = id ? S.bounties.find((b) => b.id === id) : null;
     const ref = id ? S.db.doc("bounties/" + id) : S.db.collection("bounties").doc();
@@ -1220,6 +1228,7 @@ document.addEventListener("click", async (e) => {
       return;
     }
     case "new-bounty": return bountyForm();
+    case "bounty-list": return bountyListForm();
     case "edit-bounty": return bountyForm(S.bounties.find((b) => b.id === id));
     case "del-bounty": {
       if (!arm(el, "Tap again to delete")) return;
@@ -2030,12 +2039,37 @@ const DEFAULT_BOONS = [
 async function seedBoons() { if (S.boons.length) return; for (const b of DEFAULT_BOONS) await S.db.collection("boons").doc().set({ ...b, createdAt: new Date().toISOString() }); }
 
 /* Bounties: chores that reset every day, week or month. */
-const BOUNTY_EVERY = { day: ["Daily", "Daily bounties"], week: ["Weekly", "Weekly bounties"], month: ["Monthly", "Monthly bounties"] };
+const BOUNTY_EVERY = { day: ["Daily", "Daily bounties"], week: ["Weekly", "Weekly bounties"], "2weeks": ["Every 2 weeks", "Biweekly bounties"], month: ["Monthly", "Monthly bounties"], "2months": ["Every 2 months", "Bounties every 2 months"], quarter: ["Quarterly", "Quarterly bounties"], year: ["Yearly", "Yearly bounties"], asneeded: ["As needed", "Bounties as needed"] };
+// Start of the current round. Biweekly rounds are counted from Monday, Jan 1 2024; 2-month rounds start Jan, Mar, May...
 function periodStart(every, d = today()) {
   const x = parse(d);
-  if (every === "week") x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  if (every === "week" || every === "2weeks") x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  if (every === "2weeks" && Math.round((x - new Date(2024, 0, 1)) / 6048e5) % 2) x.setDate(x.getDate() - 7);
   if (every === "month") x.setDate(1);
+  if (every === "2months" || every === "quarter") x.setMonth(x.getMonth() - (x.getMonth() % (every === "quarter" ? 3 : 2)), 1);
+  if (every === "year") x.setMonth(0, 1);
   return fmt(x);
+}
+// Bulk add: section lines like "Weekly:" set the schedule for the lines under them; "*2" at the end of a line sets 2 stars.
+const EVERY_WORDS = [[/^daily/, "day"], [/^(bi-?weekly|every 2 weeks)/, "2weeks"], [/^weekly/, "week"], [/^(bi-?monthly|every 2 months)/, "2months"], [/^monthly/, "month"], [/^quarterly/, "quarter"], [/^(yearly|annual)/, "year"], [/^(as needed|additional|seasonal)/, "asneeded"]];
+function parseBountyList(text) {
+  let every = "week"; const out = [];
+  for (let line of text.split(/\n/)) {
+    line = line.replace(/^[-*•\s]+/, "").trim(); if (!line) continue;
+    const head = line.match(/^([^:]+):\s*$/);
+    if (head) { const hit = EVERY_WORDS.find(([re]) => re.test(head[1].trim().toLowerCase())); if (hit) every = hit[1]; continue; }
+    const st = line.match(/\s*\*([123])\s*$/); const stars = st ? +st[1] : 1; if (st) line = line.slice(0, st.index).trim();
+    out.push({ title: line, every, stars });
+  }
+  return out;
+}
+function bountyListForm() {
+  openSheet(`<form id="bounty-list-form">
+    <h2>${tv("Add chores from a list", "Post bounties from a list")}</h2>
+    <p class="sm">One chore per line. A line like <b>Weekly:</b>, <b>Biweekly:</b>, <b>Monthly:</b>, <b>Every 2 months:</b>, <b>Quarterly:</b>, <b>Yearly:</b> or <b>As needed:</b> sets the schedule for the lines below it. Add <b>*2</b> or <b>*3</b> at the end of a line for 2 or 3 stars. Chores already on the board are skipped.</p>
+    <div class="fields"><label class="f full">List<textarea name="list" rows="12" placeholder="Weekly:\nScoop cat litter\nTake out trash cans *2\n\nMonthly:\nClean kitchen *2"></textarea></label></div>
+    <footer><div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Add all</button></div></footer>
+  </form>`);
 }
 const bountyDone = (b) => !!b.lastDone && b.lastDone >= periodStart(b.every || "week");
 function bountyForm(b = {}) {
