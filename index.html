@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="Homebox">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700;800&family=Cinzel:wght@600;700;800&family=Crimson+Pro:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700&display=swap">
 <style>
 [hidden] { display: none !important }
 html { -webkit-text-size-adjust: 100% }
@@ -68,7 +68,7 @@ a.btn { color: var(--ink); text-decoration: none; display: inline-block }
 .strip > div:first-child { border-left: 0 }
 .strip b { display: block; font-family: var(--display); font-size: 26px; line-height: 1.1; font-variant-numeric: tabular-nums }
 .strip span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
-.strip .over b { color: var(--over) } .strip .soon b { color: var(--soon) }
+.strip .over b { color: var(--over) } .strip b span { font: inherit; color: inherit; text-transform: none; letter-spacing: 0 } .strip .soon b { color: var(--soon) }
 @media (max-width: 560px) { .strip { grid-template-columns: repeat(2, minmax(0, 1fr)) }
   .strip > div:nth-child(3) { border-left: 0 } .strip > div:nth-child(n+3) { border-top: 1px solid var(--line) } }
 
@@ -224,6 +224,101 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
   .btn:hover, .row.clickable:hover { transition-duration: .1s }
 }
 @media (max-width: 420px) { nav.tabs button { padding: 8px 9px; font-size: 14.5px } .strip b { font-size: 26px } }
+
+/* ---------- Tavern skin (opt-in via the "Tavern look" switch; data-skin="tavern" on <html>) ---------- */
+:root[data-skin="tavern"] {
+  --bg: #E9DDBF; --surface: #F6EDD6; --sunk: #EADCB8; --ink: #2B1D10; --muted: #6E5638; --line: #C9B184;
+  --accent: #7A2E1C; --accent-ink: #FFF4DE; --tag: #E2CC9A; --tag-ink: #4A3416;
+  --over: #A3261A; --soon: #946100; --ok: #3F6B3A;
+  --display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --body: "Crimson Pro", Georgia, "Times New Roman", serif;
+  --radius: 6px;
+  --shadow: 0 1px 0 rgb(255 248 230 / .6) inset, 0 2px 6px rgb(60 35 10 / .18);
+  --glow: rgb(122 46 28 / .10); --accent-soft: rgb(122 46 28 / .10); --over-soft: rgb(163 38 26 / .10); --soon-soft: rgb(148 97 0 / .12);
+  --frame: #3A2414; --frame-2: #5A3A20; --gold: #B08A3E; --seal: #8E2418;
+}
+@media (prefers-color-scheme: dark) { :root[data-skin="tavern"]:not([data-theme="light"]) {
+  --bg: #1A120C; --surface: #2A1D13; --sunk: #33241A; --ink: #F1E2C2; --muted: #BFA57E; --line: #4E3823;
+  --accent: #E0A04A; --accent-ink: #1A0F06; --tag: #4A3420; --tag-ink: #F1D9A8;
+  --over: #F07E5E; --soon: #E9B44C; --ok: #9CC48A; color-scheme: dark;
+  --shadow: 0 2px 10px rgb(0 0 0 / .45); --glow: rgb(224 160 74 / .16); --accent-soft: rgb(224 160 74 / .14); --over-soft: rgb(240 126 94 / .12); --soon-soft: rgb(233 180 76 / .12);
+  --frame: #0E0905; --frame-2: #2A1A0E; --gold: #C99A4A; --seal: #9E2A1C; } }
+:root[data-skin="tavern"][data-theme="dark"] {
+  --bg: #1A120C; --surface: #2A1D13; --sunk: #33241A; --ink: #F1E2C2; --muted: #BFA57E; --line: #4E3823;
+  --accent: #E0A04A; --accent-ink: #1A0F06; --tag: #4A3420; --tag-ink: #F1D9A8;
+  --over: #F07E5E; --soon: #E9B44C; --ok: #9CC48A; color-scheme: dark;
+  --shadow: 0 2px 10px rgb(0 0 0 / .45); --glow: rgb(224 160 74 / .16); --accent-soft: rgb(224 160 74 / .14); --over-soft: rgb(240 126 94 / .12); --soon-soft: rgb(233 180 76 / .12);
+  --frame: #0E0905; --frame-2: #2A1A0E; --gold: #C99A4A; --seal: #9E2A1C; }
+
+[data-skin="tavern"] body { font-size: 17px; line-height: 1.45;
+  background:
+    radial-gradient(900px 380px at 50% -120px, var(--glow), transparent 70%) no-repeat,
+    repeating-linear-gradient(90deg, rgb(0 0 0 / .05) 0 2px, transparent 2px 46px),
+    linear-gradient(180deg, var(--frame-2), var(--frame)) no-repeat, var(--frame); min-height: 100vh; }
+[data-skin="tavern"] .wrap { margin-top: 18px; margin-bottom: 18px; background:
+    radial-gradient(120% 90% at 50% 0%, rgb(255 255 255 / .18), transparent 60%),
+    radial-gradient(60% 40% at 0% 100%, rgb(120 80 30 / .10), transparent 70%),
+    radial-gradient(60% 40% at 100% 100%, rgb(120 80 30 / .10), transparent 70%), var(--bg);
+  border: 2px solid var(--gold); outline: 6px solid var(--frame); outline-offset: 0;
+  border-radius: 4px; box-shadow: 0 0 0 1px var(--frame), 0 18px 50px rgb(0 0 0 / .5), inset 0 0 60px rgb(90 55 20 / .18); padding-top: 26px }
+@media (max-width: 920px) { [data-skin="tavern"] .wrap { margin: 8px; } }
+[data-skin="tavern"] .brand h1 { font-family: var(--display); letter-spacing: .08em; text-transform: none; font-weight: 800; color: var(--accent) }
+[data-skin="tavern"] .brand h1 .logo { filter: sepia(.8) saturate(1.4) hue-rotate(-12deg); border-radius: 50% }
+[data-skin="tavern"] .brand p { font-style: italic; font-size: 16px }
+[data-skin="tavern"] h1, [data-skin="tavern"] h2, [data-skin="tavern"] .empty strong { font-family: var(--display); letter-spacing: .03em }
+
+/* wax-seal primary buttons */
+[data-skin="tavern"] .btn { font-family: var(--body); font-weight: 600; font-size: 16px; background: var(--surface); border-color: var(--line) }
+[data-skin="tavern"] .btn.small { font-size: 14.5px }
+[data-skin="tavern"] .btn.primary { background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--seal) 70%, #fff 30%), var(--seal) 55%, color-mix(in srgb, var(--seal) 70%, #000 30%));
+  color: #FBEBD0; border-color: color-mix(in srgb, var(--seal) 60%, #000); text-shadow: 0 1px 0 rgb(0 0 0 / .35); box-shadow: 0 2px 4px rgb(40 10 0 / .35), inset 0 0 0 2px rgb(255 220 180 / .12) }
+[data-skin="tavern"] header.top .actions .btn::before { content: "✦"; font-size: .85em; opacity: .85 }
+
+/* tally board */
+[data-skin="tavern"] .strip > div { background: var(--surface); border: 1px solid var(--line) !important; box-shadow: var(--shadow) }
+[data-skin="tavern"] .strip > div::before { width: 0 }
+[data-skin="tavern"] .strip b { font-family: var(--display); font-size: 32px; display: flex; align-items: center; gap: 8px }
+[data-skin="tavern"] .strip > div > span { font-family: var(--display); font-size: 11.5px; letter-spacing: .12em }
+.d20 { display: none }
+[data-skin="tavern"] .over b { display: flex; align-items: center; gap: 8px }
+[data-skin="tavern"] .d20 { display: inline-block; width: 26px; height: 26px; flex: none; color: var(--over) }
+
+/* banner tabs */
+[data-skin="tavern"] nav.tabs { background: linear-gradient(var(--frame-2), var(--frame)); border: 1px solid var(--gold); border-radius: 4px; padding: 5px }
+[data-skin="tavern"] nav.tabs button { font-family: var(--display); font-size: 14.5px; letter-spacing: .06em; color: #D9C29A; border-radius: 3px }
+[data-skin="tavern"] nav.tabs button:hover { background: rgb(255 255 255 / .06); color: #F6E7C6 }
+[data-skin="tavern"] nav.tabs button[aria-selected="true"] { background: var(--bg); color: var(--accent); box-shadow: inset 0 0 0 1px var(--gold) }
+
+/* section headings with ink flourishes */
+[data-skin="tavern"] .group h3, [data-skin="tavern"] h3.grp { font-family: var(--display); font-size: 15px; letter-spacing: .1em; color: var(--accent); font-weight: 700 }
+[data-skin="tavern"] .group h3::before, [data-skin="tavern"] h3.grp::before { content: "❦"; font-size: 1.1em; color: var(--gold) }
+[data-skin="tavern"] .group h3::after, [data-skin="tavern"] h3.grp::after { height: 2px; background: linear-gradient(90deg, var(--gold), transparent) }
+.realm-real { display: none }
+[data-skin="tavern"] .realm-real { display: inline; font-family: var(--body); text-transform: none; letter-spacing: 0; font-weight: 400; font-style: italic; color: var(--muted); font-size: 14px }
+
+/* parchment cards */
+[data-skin="tavern"] .list, [data-skin="tavern"] .log, [data-skin="tavern"] .empty, [data-skin="tavern"] .datafoot, [data-skin="tavern"] .notice, [data-skin="tavern"] .spend-cards div {
+  background: linear-gradient(180deg, rgb(255 255 255 / .12), transparent 40%), var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow), inset 0 0 0 3px var(--surface), inset 0 0 0 4px color-mix(in srgb, var(--line) 70%, transparent) }
+[data-skin="tavern"] .row { border-top: 1px dashed var(--line) }
+[data-skin="tavern"] .row:first-child { border-top: 0 }
+[data-skin="tavern"] .row .title { font-size: 18px; font-weight: 700 }
+[data-skin="tavern"] .row .meta { font-size: 15px }
+[data-skin="tavern"] .due, [data-skin="tavern"] .mono { font-family: var(--body); font-size: 15px; font-style: italic }
+[data-skin="tavern"] .row .stripe { width: 5px }
+/* red wax seal on urgent quests */
+[data-skin="tavern"] .row.over .title::before { content: ""; display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -1px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #E06A55, var(--seal) 60%, #4A0C05); box-shadow: 0 0 0 2px color-mix(in srgb, var(--seal) 40%, transparent) }
+[data-skin="tavern"] .chip { font-family: var(--body); font-size: 13.5px; border: 1px solid color-mix(in srgb, var(--tag-ink) 25%, transparent) }
+[data-skin="tavern"] .pill { font-family: var(--body); font-size: 13.5px }
+[data-skin="tavern"] .sub { font-family: var(--display); font-size: 13px; letter-spacing: .1em; color: var(--accent) }
+[data-skin="tavern"] dl.facts { background: var(--sunk); border: 1px solid var(--line) }
+[data-skin="tavern"] dl.facts dt { font-family: var(--display); font-size: 12px; letter-spacing: .06em }
+[data-skin="tavern"] dialog { background: var(--surface); border: 2px solid var(--gold); outline: 4px solid var(--frame); border-radius: 6px }
+[data-skin="tavern"] label.f { font-family: var(--display); font-size: 12.5px; letter-spacing: .05em }
+[data-skin="tavern"] label.f input, [data-skin="tavern"] label.f select, [data-skin="tavern"] label.f textarea, [data-skin="tavern"] .toolbar input, [data-skin="tavern"] .toolbar select { font-family: var(--body); font-size: 16px; letter-spacing: 0; background: var(--bg) }
+[data-skin="tavern"] .toast { font-family: var(--display); letter-spacing: .05em; background: var(--frame); color: #F6E7C6; border: 1px solid var(--gold) }
+[data-skin="tavern"] .datafoot { font-size: 15px }
+.skin-switch { margin-left: 2px }
 #print-area { display: none }
 @media print {
   body.printing { background: #fff }
@@ -245,31 +340,31 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
   <header class="top">
     <div class="brand">
       <h1><img class="logo" src="icon.svg" alt="">Homebox</h1>
-      <p>Equipment, tools and parts around the house, and the upkeep they need.</p>
+      <p data-tv="Quests, provisions and the lore of your keep.">Equipment, tools and parts around the house, and the upkeep they need.</p>
     </div>
     <div class="actions">
-      <button class="btn primary" data-act="new-task" id="btn-new-task">Add maintenance</button>
-      <button class="btn primary" data-act="new-item" id="btn-new-item">Add equipment</button>
-      <button class="btn primary" data-act="new-part" id="btn-new-part">Add parts &amp; supplies</button>
-      <button class="btn primary" data-act="new-project" id="btn-new-project">Add project</button>
+      <button class="btn primary" data-act="new-task" id="btn-new-task" data-tv="New quest">Add maintenance</button>
+      <button class="btn primary" data-act="new-item" id="btn-new-item" data-tv="New gear">Add equipment</button>
+      <button class="btn primary" data-act="new-part" id="btn-new-part" data-tv="New supplies">Add parts &amp; supplies</button>
+      <button class="btn primary" data-act="new-project" id="btn-new-project" data-tv="New campaign">Add project</button>
     </div>
   </header>
 
   <div class="strip" id="strip">
-    <div><b id="s-items">–</b><span>Items</span></div>
-    <div class="over"><b id="s-over">–</b><span>Overdue</span></div>
-    <div class="soon"><b id="s-soon">–</b><span>Due in 30 days</span></div>
-    <div><b id="s-warr">–</b><span>Warranties ending</span></div>
+    <div><b id="s-items">–</b><span data-tv="In the inventory">Items</span></div>
+    <div class="over"><b><svg class="d20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" opacity=".18" d="M12 1.5 21.5 7v10L12 22.5 2.5 17V7z"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M12 1.5 21.5 7v10L12 22.5 2.5 17V7zM12 1.5 7 9.5h10zM7 9.5 2.5 17M17 9.5 21.5 17M7 9.5 12 17l5-7.5M12 17v5.5M2.5 17H12h9.5M2.5 7 7 9.5M21.5 7 17 9.5"/></svg><span id="s-over">–</span></b><span data-tv="Urgent quests">Overdue</span></div>
+    <div class="soon"><b id="s-soon">–</b><span data-tv="Quests this month">Due in 30 days</span></div>
+    <div><b id="s-warr">–</b><span data-tv="Wards fading">Warranties ending</span></div>
   </div>
 
   <div id="banner"></div>
 
   <nav class="tabs" role="tablist">
-    <button role="tab" id="tab-upcoming" data-view="upcoming" aria-selected="true">Maintenance</button>
-    <button role="tab" id="tab-items" data-view="items" aria-selected="false">Equipment</button>
-    <button role="tab" id="tab-parts" data-view="parts" aria-selected="false">Parts &amp; supplies</button>
-    <button role="tab" id="tab-projects" data-view="projects" aria-selected="false">Projects</button>
-    <button role="tab" id="tab-spending" data-view="spending" aria-selected="false">Spending</button>
+    <button role="tab" id="tab-upcoming" data-view="upcoming" aria-selected="true" data-tv="Quest Log">Maintenance</button>
+    <button role="tab" id="tab-items" data-view="items" aria-selected="false" data-tv="Inventory">Equipment</button>
+    <button role="tab" id="tab-parts" data-view="parts" aria-selected="false" data-tv="Supplies &amp; Reagents">Parts &amp; supplies</button>
+    <button role="tab" id="tab-projects" data-view="projects" aria-selected="false" data-tv="Campaigns">Projects</button>
+    <button role="tab" id="tab-spending" data-view="spending" aria-selected="false" data-tv="Treasury">Spending</button>
   </nav>
 
   <section id="view-upcoming"></section>
@@ -333,6 +428,36 @@ const RRULE = { days: "DAILY", weeks: "WEEKLY", months: "MONTHLY", years: "YEARL
 const S = { items: [], tasks: [], parts: [], projects: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/* ---------- skins: "classic" (default) or "tavern" (fantasy quest-journal look). Per device; data never changes. ---------- */
+const SKIN_KEY = "homebox-skin";
+const isTavern = () => document.documentElement.dataset.skin === "tavern";
+const tv = (classic, tavern) => isTavern() ? tavern : classic;
+const REALMS = [
+  [/reptile/, "The Drake Den"], [/cat room|laundry room \/ cat|old laundry/, "The Cat's Keep"], [/basement/, "The Undercroft"],
+  [/garage.*attic|attic.*garage/, "The Hayloft"], [/garage/, "The Stables"], [/kitchen/, "The Hearth"], [/dining/, "The Great Hall"],
+  [/living/, "The Common Room"], [/game/, "The Gaming Hall"], [/guest/, "The Guest Quarters"], [/upstairs bed|master|main bed/, "The Lord's Chamber"],
+  [/bed/, "The Sleeping Quarters"], [/bath/, "The Bathhouse"], [/laundry/, "The Washhouse"], [/stair/, "The Tower Stair"],
+  [/attic/, "The Rafters"], [/closet/, "The Cupboard Vault"], [/shed/, "The Outpost"], [/roof/, "The Ramparts"],
+  [/porch|front/, "The Front Gate"], [/back|yard|garden/, "The Courtyard"], [/outside|outdoor/, "The Wilds"], [/multiple|whole|house|all /, "Throughout the Keep"],
+];
+function realmName(loc) { const l = String(loc || "").toLowerCase(); const hit = REALMS.find(([re]) => re.test(l)); return hit ? hit[1] : ""; }
+function realmLabel(loc) {
+  if (!loc) return esc(tv("No location", "Uncharted"));
+  const r = isTavern() ? realmName(loc) : "";
+  return r ? `${esc(r)} <span class="realm-real">${esc(loc)}</span>` : esc(loc);
+}
+function applySkin(skin) {
+  const root = document.documentElement;
+  if (skin === "tavern") root.dataset.skin = "tavern"; else delete root.dataset.skin;
+  document.querySelectorAll("[data-tv]").forEach((el) => {
+    if (el.dataset.cl == null) el.dataset.cl = el.textContent;
+    el.textContent = isTavern() ? el.dataset.tv : el.dataset.cl;
+  });
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = isTavern() ? "#3A2414" : "#2C6A4D";
+}
+function setSkin(skin) { try { localStorage.setItem(SKIN_KEY, skin); } catch {} applySkin(skin); render(); }
+try { if (localStorage.getItem(SKIN_KEY) === "tavern") applySkin("tavern"); } catch {}
+
 
 /* ---------- dates (all stored as YYYY-MM-DD, local) ---------- */
 const pad = (n) => String(n).padStart(2, "0");
@@ -395,7 +520,7 @@ function render() {
   $("s-over").textContent = ready ? over : "–";
   $("s-soon").textContent = ready ? soon : "–";
   $("s-warr").textContent = ready ? warr : "–";
-  $("s-over").parentElement.classList.toggle("has", ready && over > 0);
+  $("s-over").closest(".over").classList.toggle("has", ready && over > 0);
   $("s-soon").parentElement.classList.toggle("has", ready && soon > 0);
 
   const examples = S.items.some((i) => i.example) || S.tasks.some((t) => t.example) || S.parts.some((x) => x.example) || S.projects.some((x) => x.example);
@@ -452,12 +577,12 @@ function taskRow(t, showItem = true) {
       <div class="meta">
         <span class="due">${esc(rel(t.nextDue))}${daysUntil(t.nextDue) < 45 ? " · " + esc(nice(t.nextDue)) : ""}</span>
         <span>${esc(every(t))}</span>
-        ${showItem && it ? `<span>${esc(itemName(it))}${it.location ? " · " + esc(it.location) : ""}</span>` : ""}
+        ${showItem && it ? `<span>${esc(itemName(it))}${it.location ? " · " + esc(isTavern() && realmName(it.location) || it.location) : ""}</span>` : ""}
         ${t.lastDone ? `<span>Last done ${esc(nice(t.lastDone))}</span>` : ""}
       </div>
     </div>
     <div class="side">
-      <button class="btn small primary" data-act="done" data-id="${t.id}">Done today</button>
+      <button class="btn small primary" data-act="done" data-id="${t.id}">${tv("Done today", "Complete quest")}</button>
       <a class="btn small" href="${esc(calLink(t))}" target="_blank" rel="noopener">Add to calendar</a>
       <button class="btn small" data-act="edit-task" data-id="${t.id}">Edit</button>
     </div>
@@ -473,9 +598,9 @@ function renderUpcoming(ready) {
   }
   const sorted = [...S.tasks].sort((a, b) => (a.nextDue || "").localeCompare(b.nextDue || ""));
   const groups = [
-    ["Overdue", sorted.filter((t) => daysUntil(t.nextDue) < 0)],
-    ["Next 30 days", sorted.filter((t) => { const n = daysUntil(t.nextDue); return n >= 0 && n <= 30; })],
-    ["Later", sorted.filter((t) => daysUntil(t.nextDue) > 30)],
+    [tv("Overdue", "Urgent quests"), sorted.filter((t) => daysUntil(t.nextDue) < 0)],
+    [tv("Next 30 days", "Upcoming quests"), sorted.filter((t) => { const n = daysUntil(t.nextDue); return n >= 0 && n <= 30; })],
+    [tv("Later", "Quests on the horizon"), sorted.filter((t) => daysUntil(t.nextDue) > 30)],
   ];
   el.innerHTML = groups.filter(([, l]) => l.length).map(([h, l]) =>
     `<div class="group"><h3>${h} · ${l.length}</h3><div class="list">${l.map((t) => taskRow(t)).join("")}</div></div>`).join("");
@@ -514,7 +639,7 @@ function renderItems(ready) {
   const groups = new Map();
   for (const i of list) { const k = (i.location || "").trim(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); }
   const keys = [...groups.keys()].sort((a, b) => (!a - !b) || a.localeCompare(b));
-  el.innerHTML = keys.map((k) => `<div class="group"><h3>${esc(k || "No location")} · ${groups.get(k).length}</h3><div class="list">${groups.get(k).map(row).join("")}</div></div>`).join("");
+  el.innerHTML = keys.map((k) => `<div class="group"><h3>${realmLabel(k)} · ${groups.get(k).length}</h3><div class="list">${groups.get(k).map(row).join("")}</div></div>`).join("");
 }
 
 function renderParts(ready) {
@@ -553,6 +678,7 @@ function renderParts(ready) {
 /* ---------- projects ---------- */
 const PJ_STATUS = ["In progress", "Planned", "Idea", "On hold", "Done"];
 const PJ_PRI = ["High", "Medium", "Low"];
+const CAMPAIGN_STATUS = { "In progress": "Campaigns underway", "Planned": "Campaigns being planned", "Idea": "Rumors & ideas", "On hold": "Campaigns on hold", "Done": "Campaigns won" };
 const projById = (id) => S.projects.find((x) => x.id === id);
 const money = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : 0; };
 const fmtMoney = (n) => n.toLocaleString(undefined, { style: "currency", currency: "USD", minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
@@ -592,7 +718,7 @@ function renderProjects(ready) {
         <div class="title">${esc(x.name || "Untitled project")}${x.example ? '<span class="ex">Example</span>' : ""}</div>
         <div class="meta">
           ${x.area ? `<span class="chip">${esc(x.area)}</span>` : ""}
-          ${steps.length ? `<span>${steps.filter((s) => s.done).length} of ${steps.length} steps done</span>` : ""}
+          ${steps.length ? `<span>${steps.filter((s) => s.done).length} of ${steps.length} ${tv("steps", "objectives")} done</span>` : ""}
           ${due ? `<span class="${due.cls}">${esc(due.text)}</span>` : ""}
           ${x.status === "Done" && x.finished ? `<span>Finished ${esc(nice(x.finished))}</span>` : ""}
           ${m ? `<span class="${m.cls}">${esc(m.text)}</span>` : ""}
@@ -605,7 +731,7 @@ function renderProjects(ready) {
   el.innerHTML = PJ_STATUS.map((st) => {
     const g = list.filter((x) => (PJ_STATUS.includes(x.status) ? x.status : "Idea") === st)
       .sort((a, b) => st === "Done" ? (b.finished || "").localeCompare(a.finished || "") : rank(a) - rank(b) || (a.target || "9").localeCompare(b.target || "9"));
-    return g.length ? `<div class="group"><h3>${st} · ${g.length}</h3><div class="list">${g.map(row).join("")}</div></div>` : "";
+    return g.length ? `<div class="group"><h3>${esc(tv(st, CAMPAIGN_STATUS[st] || st))} · ${g.length}</h3><div class="list">${g.map(row).join("")}</div></div>` : "";
   }).join("");
 }
 
@@ -639,9 +765,9 @@ function projectSheet(id, focusSel = null) {
       ${safeUrl(pj.url) ? `<dt>Link</dt><dd><a href="${esc(pj.url)}" target="_blank" rel="noopener">${esc(linkText(pj.url))}</a></dd>` : ""}
       ${fact("Description", pj.description, "pre")}${fact("Notes", pj.notes, "pre")}
     </dl>
-    ${checklist(pj, "steps", "Steps", "Add a step, like Shut off water")}
-    ${checklist(pj, "materials", "Materials & shopping list", "Add something to buy, like 2 ball valves 1/2\"")}
-    <div class="sub"><span>Progress log</span><button class="btn small" data-act="new-log" data-project="${id}">Add entry</button></div>
+    ${checklist(pj, "steps", tv("Steps", "Objectives"), "Add a step, like Shut off water")}
+    ${checklist(pj, "materials", tv("Materials & shopping list", "Required provisions"), "Add something to buy, like 2 ball valves 1/2\"")}
+    <div class="sub"><span>${tv("Progress log", "Chronicle")}</span><button class="btn small" data-act="new-log" data-project="${id}">Add entry</button></div>
     ${log.length ? `<div class="log">${log.map((x) => `<div class="entry">
         <span class="due">${esc(nice(x.date))}</span>
         <span><span class="what">${esc(x.what)}</span>${x.cost || x.by ? `<br><span class="sm">${esc([x.cost, x.by].filter(Boolean).join(" · "))}</span>` : ""}</span>
@@ -757,7 +883,7 @@ function itemSheet(id) {
   openSheet(`<div data-item="${id}">
     <h2>${esc(itemName(it))}${it.example ? '<span class="ex">Example</span>' : ""}</h2>
     <dl class="facts">
-      ${fact("Type", it.type)}${fact("Location", it.location)}${fact("Model", it.model, "mono")}${fact("Serial", it.serial, "mono")}
+      ${fact("Type", it.type)}${fact(tv("Location", "Realm"), isTavern() && realmName(it.location) ? `${realmName(it.location)} (${it.location})` : it.location)}${fact("Model", it.model, "mono")}${fact("Serial", it.serial, "mono")}
       ${fact("Purchased", [nice(it.purchaseDate), it.price, it.store].filter(Boolean).join(" · "))}
       ${fact("Installed", it.installDate && it.installDate !== it.purchaseDate ? nice(it.installDate) : "")}
       ${life ? `<dt>Age</dt><dd>${esc(life.ageText)} of ~${esc(life.yrs)} expected <span class="pill ${life.cls}">${esc(life.text)}</span></dd>` : ""}
@@ -765,15 +891,15 @@ function itemSheet(id) {
       ${/^https?:\/\//i.test(it.manualUrl || "") ? `<dt>Manual</dt><dd><a href="${esc(it.manualUrl)}" target="_blank" rel="noopener">${esc(it.manualUrl.replace(/^https?:\/\/(www\.)?/i, "").slice(0, 60))}</a></dd>` : ""}
       <dt>Warranty</dt><dd><span class="pill ${w.cls}">${esc(w.text)}</span>${it.warrantyEnd ? ` <span class="hint">${esc(nice(it.warrantyEnd))}</span>` : ""}${it.registered === "yes" ? "<br>Registered" : it.registered === "no" ? `<br><span class="txt-soon">Not registered yet</span>` : ""}${it.warrantyNotes ? `<br>${esc(it.warrantyNotes)}` : ""}${safeUrl(it.warrantyUrl) ? `<br><a href="${esc(it.warrantyUrl)}" target="_blank" rel="noopener">${esc(linkText(it.warrantyUrl))}</a>` : ""}</dd>
       ${fact("Receipt", it.receipt)}
-      ${fact("Notes", it.notes)}
+      ${fact(tv("Notes", "Lore"), it.notes)}
     </dl>
     ${SRV.on ? `<div class="sub"><span>Photos</span><button class="btn small" data-act="add-photo" data-id="${id}" id="btn-add-photo">Add photos</button></div>
     ${(it.photos || []).length ? `<div class="photos">${it.photos.map((p) => `<button data-act="view-photo" data-id="${id}" data-photo="${esc(p.id)}" aria-label="Open photo"><img data-photo="${esc(p.id)}" alt=""></button>`).join("")}</div>`
       : `<div class="empty" style="padding:16px">Add photos of the item, its model and serial sticker, or the receipt.</div>`}` : ""}
     ${docsSection(it)}
-    <div class="sub"><span>Maintenance</span><button class="btn small" data-act="new-task" data-item="${id}">Add</button></div>
+    <div class="sub"><span>${tv("Maintenance", "Quests")}</span><button class="btn small" data-act="new-task" data-item="${id}">Add</button></div>
     ${tasks.length ? `<div class="list">${tasks.map((t) => taskRow(t, false)).join("")}</div>` : `<div class="empty" style="padding:16px">No maintenance set for this item.</div>`}
-    <div class="sub"><span>Repair &amp; service log</span><button class="btn small" data-act="new-log" data-item="${id}">Add entry</button></div>
+    <div class="sub"><span>${tv("Repair &amp; service log", "Chronicle")}</span><button class="btn small" data-act="new-log" data-item="${id}">Add entry</button></div>
     ${log.length ? `<div class="log">${log.map((x) => `<div class="entry">
         <span class="due">${esc(nice(x.date))}</span>
         <span><span class="what">${esc(x.what)}</span>${x.cost || x.by ? `<br><span class="sm">${esc([x.cost, x.by].filter(Boolean).join(" · "))}</span>` : ""}</span>
@@ -971,6 +1097,7 @@ document.addEventListener("click", async (e) => {
       if (!$("i-purchase").value) toast("No purchase date yet, so counted from today");
       return;
     }
+    case "skin": setSkin(isTavern() ? "classic" : "tavern"); toast(isTavern() ? "Welcome to the tavern" : "Back to the classic look"); return;
     case "done": {
       const t = S.tasks.find((x) => x.id === id); if (!t || !S.db) return;
       const d = today(), next = addInterval(d, t.every, t.unit);
@@ -979,7 +1106,7 @@ document.addEventListener("click", async (e) => {
         await S.db.doc("tasks/" + id).update({ lastDone: d, nextDue: next, history });
         const it = itemById(t.itemId);
         if (it) await S.db.doc("items/" + it.id).update({ log: [...(it.log || []), { id: newId(), date: d, what: t.title, cost: "", by: "", task: t.id }] });
-      }, `Logged. Next due ${nice(next)}`);
+      }, isTavern() ? `Quest complete! It returns ${nice(next)}` : `Logged. Next due ${nice(next)}`);
       if (inItem) itemSheet(inItem);
       return;
     }
@@ -1137,6 +1264,7 @@ function renderDataFoot(m, unsaved) {
     note = m.lastBackup ? `Saved in this browser only. Last backup ${esc(nice(m.lastBackup))}.` : "Saved in this browser only. Download a backup now and then.";
     btns = `<button class="btn small primary" data-act="file-setup" id="btn-file-setup">Keep data in a file…</button><button class="btn small" data-act="backup" id="btn-backup">Download backup</button><button class="btn small" data-act="restore" id="btn-restore">Restore from backup</button>${csv}`;
   }
+  btns += `<button class="btn small skin-switch" data-act="skin" id="btn-skin">${isTavern() ? "Classic look" : "Tavern look"}</button>`;
   $("datafoot").innerHTML = `<span id="data-note">${note}</span><span class="actions">${btns}</span>`;
 }
 
