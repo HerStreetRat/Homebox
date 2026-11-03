@@ -2040,19 +2040,19 @@ const DEFAULT_BOONS = [
 async function seedBoons() { if (S.boons.length) return; for (const b of DEFAULT_BOONS) await S.db.collection("boons").doc().set({ ...b, createdAt: new Date().toISOString() }); }
 
 /* Bounties: chores that reset every day, week or month. */
-const BOUNTY_EVERY = { day: ["Daily", "Daily bounties"], week: ["Weekly", "Weekly bounties"], "2weeks": ["Every 2 weeks", "Biweekly bounties"], month: ["Monthly", "Monthly bounties"], "2months": ["Every 2 months", "Bounties every 2 months"], quarter: ["Quarterly", "Quarterly bounties"], year: ["Yearly", "Yearly bounties"], asneeded: ["As needed", "Bounties as needed"] };
+const BOUNTY_EVERY = { day: ["Daily", "Daily bounties"], week: ["Weekly", "Weekly bounties"], "2weeks": ["Every 2 weeks", "Biweekly bounties"], month: ["Monthly", "Monthly bounties"], "2months": ["Every 2 months", "Bounties every 2 months"], quarter: ["Quarterly", "Quarterly bounties"], "6months": ["Every 6 months", "Bounties every 6 months"], year: ["Yearly", "Yearly bounties"], asneeded: ["As needed", "Bounties as needed"] };
 // Start of the current round. Biweekly rounds are counted from Monday, Jan 1 2024; 2-month rounds start Jan, Mar, May...
 function periodStart(every, d = today()) {
   const x = parse(d);
   if (every === "week" || every === "2weeks") x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
   if (every === "2weeks" && Math.round((x - new Date(2024, 0, 1)) / 6048e5) % 2) x.setDate(x.getDate() - 7);
   if (every === "month") x.setDate(1);
-  if (every === "2months" || every === "quarter") x.setMonth(x.getMonth() - (x.getMonth() % (every === "quarter" ? 3 : 2)), 1);
+  if (every === "2months" || every === "quarter" || every === "6months") x.setMonth(x.getMonth() - (x.getMonth() % ({ "2months": 2, quarter: 3, "6months": 6 })[every]), 1);
   if (every === "year") x.setMonth(0, 1);
   return fmt(x);
 }
 // Bulk add: section lines like "Weekly:" set the schedule for the lines under them; "*2" at the end of a line sets 2 stars.
-const EVERY_WORDS = [[/^daily/, "day"], [/^(bi-?weekly|every 2 weeks)/, "2weeks"], [/^weekly/, "week"], [/^(bi-?monthly|every 2 months)/, "2months"], [/^monthly/, "month"], [/^quarterly/, "quarter"], [/^(yearly|annual)/, "year"], [/^(as needed|additional|seasonal)/, "asneeded"]];
+const EVERY_WORDS = [[/^daily/, "day"], [/^(bi-?weekly|every 2 weeks)/, "2weeks"], [/^weekly/, "week"], [/^(bi-?monthly|every 2 months)/, "2months"], [/^monthly/, "month"], [/^quarterly/, "quarter"], [/^(every 6 months|semi-?annual|twice a year|6 ?mo)/, "6months"], [/^(yearly|annual)/, "year"], [/^(as needed|additional|seasonal)/, "asneeded"]];
 function parseBountyList(text) {
   let every = "week"; const out = [];
   for (let line of text.split(/\n/)) {
@@ -2067,7 +2067,7 @@ function parseBountyList(text) {
 function bountyListForm() {
   openSheet(`<form id="bounty-list-form">
     <h2>${tv("Add chores from a list", "Post bounties from a list")}</h2>
-    <p class="sm">One chore per line. A line like <b>Weekly:</b>, <b>Biweekly:</b>, <b>Monthly:</b>, <b>Every 2 months:</b>, <b>Quarterly:</b>, <b>Yearly:</b> or <b>As needed:</b> sets the schedule for the lines below it. Add <b>*2</b> or <b>*3</b> at the end of a line for 2 or 3 stars. Chores already on the board are skipped.</p>
+    <p class="sm">One chore per line. A line like <b>Weekly:</b>, <b>Biweekly:</b>, <b>Monthly:</b>, <b>Every 2 months:</b>, <b>Quarterly:</b>, <b>Every 6 months:</b>, <b>Yearly:</b> or <b>As needed:</b> sets the schedule for the lines below it. Add <b>*2</b> or <b>*3</b> at the end of a line for 2 or 3 stars. Chores already on the board are skipped.</p>
     <div class="fields"><label class="f full">List<textarea name="list" rows="12" placeholder="Weekly:\nScoop cat litter\nTake out trash cans *2\n\nMonthly:\nClean kitchen *2"></textarea></label></div>
     <footer><div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Add all</button></div></footer>
   </form>`);
