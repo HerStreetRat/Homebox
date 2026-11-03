@@ -1103,7 +1103,7 @@ document.addEventListener("submit", async (e) => {
   if (f.id === "bounty-form") {
     const d = formData(f), prev = id ? S.bounties.find((b) => b.id === id) : null;
     const ref = id ? S.db.doc("bounties/" + id) : S.db.collection("bounties").doc();
-    if (await write(() => ref.set({ ...(prev || { history: [], lastDone: "", createdAt: new Date().toISOString() }), title: d.title, every: d.every, stars: starsOf(d), xp: null, notes: d.notes }), id ? "Saved" : tv("Chore added", "Bounty posted"))) closeSheet();
+    if (await write(() => ref.set({ ...(prev || { history: [], lastDone: "", createdAt: new Date().toISOString() }), title: d.title, every: d.every, stars: starsOf(d), xp: null, notes: d.notes, pausedUntil: d.pausedUntil || "" }), id ? "Saved" : tv("Chore added", "Bounty posted"))) closeSheet();
     return;
   }
   if (f.id === "task-form") {
@@ -1229,6 +1229,7 @@ document.addEventListener("click", async (e) => {
     }
     case "new-bounty": return bountyForm();
     case "bounty-list": return bountyListForm();
+    case "bounty-resume": await write(() => S.db.doc("bounties/" + id).update({ pausedUntil: "" }), tv("Chore resumed", "Bounty back on the board")); return;
     case "edit-bounty": return bountyForm(S.bounties.find((b) => b.id === id));
     case "del-bounty": {
       if (!arm(el, "Tap again to delete")) return;
@@ -2071,6 +2072,7 @@ function bountyListForm() {
     <footer><div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Add all</button></div></footer>
   </form>`);
 }
+const bountyPaused = (b) => !!b.pausedUntil && b.pausedUntil > today();
 const bountyDone = (b) => !!b.lastDone && b.lastDone >= periodStart(b.every || "week");
 function bountyForm(b = {}) {
   openSheet(`<form id="bounty-form" data-id="${esc(b.id || "")}">
@@ -2079,6 +2081,7 @@ function bountyForm(b = {}) {
       <label class="f full">${tv("Chore", "Bounty")}<input name="title" maxlength="80" value="${esc(b.title)}" placeholder="Take out the trash" required></label>
       <label class="f">Resets<select name="every">${Object.entries(BOUNTY_EVERY).map(([k, [l]]) => `<option value="${k}"${(b.every || "week") === k ? " selected" : ""}>${l}</option>`).join("")}</select></label>
       ${starSelect(b)}
+      <label class="f">Paused until<input name="pausedUntil" type="date" value="${esc(b.pausedUntil || "")}"></label>
       <label class="f full">Notes<textarea name="notes" placeholder="Bins go out Tuesday night.">${esc(b.notes)}</textarea></label>
     </div>
     <footer>${b.id ? `<button type="button" class="btn danger" data-act="del-bounty" data-id="${b.id}">Delete</button>` : ""}<div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Save</button></div></footer>
@@ -2093,6 +2096,9 @@ function renderBounties(ready) {
   if (!S.bounties.length) { box.innerHTML = who + `<div class="empty">${tv("No chores yet. Add the regular jobs around the house, like trash night or the litter box.", "The board is empty. Post the regular jobs around the keep, like trash night or the litter box.")}</div>`; return; }
   const pass = S.boons.find((b) => b.pass);
   const row = (b) => {
+    if (bountyPaused(b)) return `<div class="row"><span class="stripe"></span>
+      <div class="main"><div class="title">${esc(b.title)}</div><div class="meta"><span>Paused until ${esc(nice(b.pausedUntil))}</span><span>${BOUNTY_EVERY[b.every || "week"][0]}</span></div></div>
+      <div class="side"><button class="btn small" data-act="bounty-resume" data-id="${b.id}">Resume now</button><button class="btn small" data-act="edit-bounty" data-id="${b.id}">Edit</button></div></div>`;
     const done = bountyDone(b), by = done && b.doneBy ? heroById(b.doneBy)?.name || "" : "";
     const canPass = !done && canPassX(b), pc = passCost(b);
     return `<div class="row ${done ? "ok" : ""}">
@@ -2103,11 +2109,14 @@ function renderBounties(ready) {
     </div>`;
   };
   box.innerHTML = who + Object.entries(BOUNTY_EVERY).map(([k, [, label]]) => {
-    const list = S.bounties.filter((b) => (b.every || "week") === k).sort((a, b) => bountyDone(a) - bountyDone(b) || a.title.localeCompare(b.title));
+    const list = S.bounties.filter((b) => (b.every || "week") === k && !bountyPaused(b)).sort((a, b) => bountyDone(a) - bountyDone(b) || a.title.localeCompare(b.title));
     if (!list.length) return "";
     const open = list.filter((b) => !bountyDone(b)).length;
-    return `<h3 class="grp">${tv(label.replace("bounties", "chores"), label)} · ${open} ${tv("left", "open")}</h3><div class="list">${list.map(row).join("")}</div>`;
-  }).join("");
+    return `<h3 class="grp">${tv(label.replace(/bounties/i, (m) => m[0] === "B" ? "Chores" : "chores"), label)} · ${open} ${tv("left", "open")}</h3><div class="list">${list.map(row).join("")}</div>`;
+  }).join("") + (() => {
+    const paused = S.bounties.filter(bountyPaused).sort((a, b) => a.pausedUntil.localeCompare(b.pausedUntil));
+    return paused.length ? `<h3 class="grp">${tv("Paused chores", "Bounties on hold")} · ${paused.length}</h3><div class="list">${paused.map(row).join("")}</div>` : "";
+  })();
 }
 function renderGuild(ready) {
   const box = $("guild-list"); if (!box) return;
