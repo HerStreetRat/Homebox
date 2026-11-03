@@ -686,7 +686,8 @@ const PJ_STATUS = ["In progress", "Planned", "Idea", "On hold", "Done"];
 const PJ_PRI = ["High", "Medium", "Low"];
 const CAMPAIGN_STATUS = { "In progress": "Campaigns underway", "Planned": "Campaigns being planned", "Idea": "Rumors & ideas", "On hold": "Campaigns on hold", "Done": "Campaigns won" };
 const projById = (id) => S.projects.find((x) => x.id === id);
-const money = (v) => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : 0; };
+// Uses the first amount in the text, so notes like "$6,465 ($7,225 less $760 credit)" count once.
+const money = (v) => { const m = String(v ?? "").match(/(-?)\$?\s*(\d[\d,]*(?:\.\d+)?|\.\d+)/); const n = m ? parseFloat(m[1] + m[2].replace(/,/g, "")) : 0; return isFinite(n) ? n : 0; };
 const fmtMoney = (n) => n.toLocaleString(undefined, { style: "currency", currency: "USD", minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
 const projSpent = (pj) => (pj.log || []).reduce((sum, x) => sum + money(x.cost), 0);
 const priClass = (pr) => pr === "High" ? "over" : pr === "Medium" ? "soon" : "none";
