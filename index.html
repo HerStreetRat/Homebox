@@ -333,7 +333,11 @@ dl.facts { padding: 12px 14px; border-radius: var(--radius); background: var(--s
 .hero-card .log .entry { grid-template-columns: minmax(0, 1fr) auto; padding: 6px 10px; font-size: 14px } .hero-card .log .entry .due { grid-column: 1 / -1; font-size: 12px; color: var(--muted) }
 .log .entry.clickable { cursor: pointer } .log .entry.clickable:hover { background: var(--accent-soft) }
 .btn:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.4) }
-@media (min-width: 700px) { [data-skin="tavern"] nav.tabs button { padding-inline: 11px; font-size: 14px; letter-spacing: .04em } }
+/* Seven tabs: smaller text so they fit in one row on a computer, and wrap into rows on a phone instead of scrolling. */
+nav.tabs { flex-wrap: wrap; justify-content: center; overflow: visible }
+nav.tabs button { font-size: 14px !important; padding: 7px 10px !important; flex: 1 1 auto }
+[data-skin="tavern"] nav.tabs button { font-size: 13px !important; letter-spacing: .03em !important; padding: 7px 8px !important }
+@media (max-width: 560px) { nav.tabs button { flex: 1 1 30%; font-size: 13px !important; padding: 7px 6px !important } [data-skin="tavern"] nav.tabs button { font-size: 12px !important } }
 .hero-btns { display: flex; flex-wrap: wrap; gap: 6px }
 #hero-chip:empty { display: none }
 #hero-chip { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; color: var(--muted) }
