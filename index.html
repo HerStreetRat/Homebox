@@ -2087,7 +2087,7 @@ function renderGuild(ready) {
     </div>`;
   };
   const mine = myHero(), mineTok = mine ? heroTokens(mine) : 0;
-  const shop = S.boons.map((b) => `<div class="row"><span class="stripe"></span>
+  const shop = [...S.boons].sort((a, b) => (+a.cost || 1) - (+b.cost || 1) || String(a.name).localeCompare(String(b.name))).map((b) => `<div class="row"><span class="stripe"></span>
       <div class="main"><div class="title">${esc(b.name)}</div><div class="meta"><span>${+b.cost || 1} ${tokenWord(+b.cost || 1)}</span>${b.desc ? `<span>${esc(b.desc)}</span>` : ""}</div></div>
       <div class="side">${b.pass ? "" : `<button class="btn small primary" data-act="boon-claim" data-id="${b.id}"${mine && mineTok >= (+b.cost || 1) ? "" : " disabled"}>${tv("Use", "Claim")}</button>`}<button class="btn small" data-act="edit-boon" data-id="${b.id}">Edit</button></div></div>`).join("");
   box.innerHTML = `${heroes.length ? `<div class="hero-grid">${heroes.map(card).join("")}</div>` : `<div class="empty">${tv("Add each person in the house. Finishing maintenance, chores and project steps earns XP, every level earns a reward token, and tokens buy rewards you all agree on.", "Add each member of your party. Quests, bounties and campaign objectives earn XP, every level earns a boon token, and tokens buy boons from the shop below.")}</div>`}
