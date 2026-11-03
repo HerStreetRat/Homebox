@@ -436,6 +436,7 @@ nav.tabs button { font-size: 14px !important; padding: 7px 10px !important; flex
       <select id="f-syear" aria-label="Year"><option value="">All years</option></select>
     </div>
     <div id="spending-list"></div>
+    <div id="energy-list"></div>
   </section>
 
   <footer class="datafoot" id="datafoot"></footer>
@@ -463,7 +464,7 @@ const TASK_IDEAS = ["Replace furnace filter", "Oil blower motor", "Winterize", "
 const UNITS = { days: "day", weeks: "week", months: "month", years: "year" };
 const RRULE = { days: "DAILY", weeks: "WEEKLY", months: "MONTHLY", years: "YEARLY" };
 
-const S = { items: [], tasks: [], parts: [], projects: [], heroes: [], boons: [], bounties: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
+const S = { items: [], tasks: [], parts: [], projects: [], heroes: [], boons: [], bounties: [], settings: [], view: "upcoming", db: null, dl: null, loaded: { items: false, tasks: false } };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 /* ---------- skins: "classic" (default) or "tavern" (fantasy quest-journal look). Per device; data never changes. ---------- */
@@ -592,6 +593,7 @@ function render() {
   renderBounties(ready);
   renderGuild(ready);
   renderSpending(ready);
+  renderEnergy(ready);
   const me = myHero();
   if (me) { const L = levelOf(heroXp(me)), tok = heroTokens(me); $("hero-chip").innerHTML = `<span><b>${esc(me.name)}</b> · Level ${L.lvl} ${esc(heroTitle(me))}</span><span class="xpbar" title="${L.into} / ${L.need} XP"><i style="width:${Math.round(100 * L.into / L.need)}%"></i></span><span>${L.into} / ${L.need} XP</span><span>${tok} ${tokenWord(tok)}</span>`; }
   else $("hero-chip").innerHTML = "";
@@ -896,6 +898,10 @@ function itemForm(it = {}) {
       <label class="f">Expected lifespan (years)<input id="i-life" name="lifespan" type="number" min="1" max="100" inputmode="numeric" value="${esc(it.lifespan)}" placeholder="12"></label>
       <p class="hint full" style="margin:0">${esc(LIFESPAN_HINT)}</p>
       <label class="f full">Size &amp; specs<textarea id="i-specs" name="specs" placeholder="30&quot; W x 48&quot; H. 80,000 BTU, 120V / 15A. Filter slot 16x25x1.">${esc(it.specs)}</textarea></label>
+      <label class="f">Watts<input id="i-watts" name="watts" inputmode="decimal" value="${esc(it.watts)}" placeholder="From the label or manual"></label>
+      <label class="f">Watts came from<input id="i-wsrc" name="wattsSource" value="${esc(it.wattsSource)}" placeholder="Label, manual, spec sheet"></label>
+      <label class="f">Hours used per day<input id="i-hours" name="hoursPerDay" inputmode="decimal" value="${esc(it.hoursPerDay)}" placeholder="8"></label>
+      <label class="f">Months used per year<input id="i-months" name="monthsPerYear" inputmode="decimal" value="${esc(it.monthsPerYear)}" placeholder="12"></label>
       <label class="f full">Replacement parts &amp; supplies<input id="i-parts" name="parts" value="${esc(it.parts)}" placeholder="Filter 16x25x1 MERV 8, belt A-38, bulb E26 LED"></label>
       <label class="f">Price paid<input id="i-price" name="price" inputmode="decimal" value="${esc(it.price)}" placeholder="$1,850"></label>
       <label class="f">Bought from<input id="i-store" name="store" value="${esc(it.store)}" placeholder="Home Depot, order #…"></label>
@@ -943,6 +949,7 @@ function itemSheet(id) {
       ${fact("Purchased", [nice(it.purchaseDate), it.price, it.store].filter(Boolean).join(" · "))}
       ${fact("Installed", it.installDate && it.installDate !== it.purchaseDate ? nice(it.installDate) : "")}
       ${life ? `<dt>Age</dt><dd>${esc(life.ageText)} of ~${esc(life.yrs)} expected <span class="pill ${life.cls}">${esc(life.text)}</span></dd>` : ""}
+      ${fact("Power", +it.watts ? [`${+it.watts} W`, it.wattsSource ? `from ${it.wattsSource}` : "", +it.hoursPerDay ? `${+it.hoursPerDay} h/day` : "", +it.hoursPerDay ? `${+it.monthsPerYear || 12} mo/yr` : "", energyOf(it) ? `≈ ${Math.round(energyOf(it).kwhYear)} kWh/yr` : ""].filter(Boolean).join(" · ") : "")}
       ${fact("Size & specs", it.specs, "pre")}${fact("Parts", it.parts)}${fact("Service", it.service)}
       ${/^https?:\/\//i.test(it.manualUrl || "") ? `<dt>Manual</dt><dd><a href="${esc(it.manualUrl)}" target="_blank" rel="noopener">${esc(it.manualUrl.replace(/^https?:\/\/(www\.)?/i, "").slice(0, 60))}</a></dd>` : ""}
       <dt>Warranty</dt><dd><span class="pill ${w.cls}">${esc(w.text)}</span>${it.warrantyEnd ? ` <span class="hint">${esc(nice(it.warrantyEnd))}</span>` : ""}${it.registered === "yes" ? "<br>Registered" : it.registered === "no" ? `<br><span class="txt-soon">Not registered yet</span>` : ""}${it.warrantyNotes ? `<br>${esc(it.warrantyNotes)}` : ""}${safeUrl(it.warrantyUrl) ? `<br><a href="${esc(it.warrantyUrl)}" target="_blank" rel="noopener">${esc(linkText(it.warrantyUrl))}</a>` : ""}</dd>
@@ -1410,7 +1417,7 @@ const FILE_TYPES = [{ description: "Homebox data", accept: { "application/json":
 const stable = (v) => Array.isArray(v) ? `[${v.map(stable).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stable(v[k])).join(",")}}` : JSON.stringify(v ?? null);
 function sigOf(d) { const s = stable(Object.fromEntries(COLS.map((c) => [c, d[c] || {}]))); let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0; return h.toString(36) + "." + s.length; }
 const localSig = () => sigOf(localDb.raw());
-const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks, parts: r.parts, projects: r.projects, heroes: r.heroes, boons: r.boons, bounties: r.bounties }, null, 2); };
+const snapshot = () => { const r = localDb.raw(); return JSON.stringify({ app: "homebox", version: 1, exportedAt: new Date().toISOString(), items: r.items, tasks: r.tasks, parts: r.parts, projects: r.projects, heroes: r.heroes, boons: r.boons, bounties: r.bounties, settings: r.settings }, null, 2); };
 function parseHomebox(text) {
   try { const d = JSON.parse(text); return d && d.app === "homebox" && d.items && typeof d.items === "object" && d.tasks && typeof d.tasks === "object" ? d : null; } catch { return null; }
 }
@@ -1951,6 +1958,36 @@ function healthSheet() {
     <footer><div class="r"><button class="btn" data-act="close">Close</button></div></footer></div>`, null);
 }
 
+/* ---------- energy: kWh = watts x hours / 1000. Watts only from labels or manuals, never guessed. ---------- */
+function energyOf(it) {
+  const w = +it.watts, h = +it.hoursPerDay, m = Math.min(12, +it.monthsPerYear || 12);
+  if (!(w > 0) || !(h > 0)) return null;
+  const kwhYear = w * Math.min(24, h) * 365 * (m / 12) / 1000;
+  return { kwhYear, kwhMonth: kwhYear / 12 };
+}
+const energyRate = () => +(S.settings.find((x) => x.id === "main")?.kwhRate) || 0;
+function renderEnergy(ready) {
+  const box = $("energy-list"); if (!box) return;
+  if (!ready) { box.innerHTML = ""; return; }
+  const withW = S.items.filter((i) => +i.watts > 0), rate = energyRate();
+  const rows = withW.map((i) => ({ i, e: energyOf(i) })).sort((a, b) => (b.e?.kwhYear || 0) - (a.e?.kwhYear || 0));
+  const used = rows.filter((r) => r.e), tot = used.reduce((n, r) => n + r.e.kwhYear, 0);
+  const $c = (kwh) => rate ? fmtMoney(kwh * rate / 100) : "–";
+  box.innerHTML = `<h3 class="grp">${tv("Energy use", "Mana drain")}</h3>
+    <div class="toolbar"><label class="sm">Your rate (¢ per kWh, from your bill) <input id="kwh-rate" type="number" step="0.01" min="0" style="width:90px" value="${rate || ""}" placeholder="14.5"></label></div>
+    ${withW.length ? "" : `<div class="empty">No watts recorded yet. Add them under Edit on an item, using the number from its label or manual.</div>`}
+    ${used.length ? `<div class="tbl-wrap"><table class="spend"><thead><tr><th>What</th><th>Watts</th><th>Use</th><th>kWh / month</th><th>$ / month</th><th>$ / year</th></tr></thead><tbody>
+      ${used.map(({ i, e }) => `<tr><td><button class="btn link" data-act="open-item" data-id="${esc(i.id)}">${esc(itemName(i))}</button></td><td>${+i.watts}</td><td>${+i.hoursPerDay} h/day${(+i.monthsPerYear || 12) < 12 ? `, ${+i.monthsPerYear} mo/yr` : ""}</td><td>${e.kwhMonth.toFixed(1)}</td><td>${$c(e.kwhMonth)}</td><td><b>${$c(e.kwhYear)}</b></td></tr>`).join("")}
+      <tr><td><b>Total</b></td><td></td><td></td><td><b>${(tot / 12).toFixed(1)}</b></td><td><b>${$c(tot / 12)}</b></td><td><b>${$c(tot)}</b></td></tr></tbody></table></div>` : ""}
+    ${rows.some((r) => !r.e) ? `<p class="sm">Need hours of use: ${rows.filter((r) => !r.e).map((r) => `<button class="btn link" data-act="open-item" data-id="${esc(r.i.id)}">${esc(itemName(r.i))}</button>`).join(", ")}</p>` : ""}
+    <p class="sm">Estimates assume the item draws its full rated watts while on. Things that cycle, like fridges and AC, use less.</p>`;
+}
+document.addEventListener("change", async (e) => {
+  if (e.target.id !== "kwh-rate" || !S.db) return;
+  const v = Math.max(0, parseFloat(e.target.value) || 0);
+  await write(() => S.db.doc("settings/main").set({ ...(S.settings.find((x) => x.id === "main") || {}), kwhRate: v, id: undefined }), "Rate saved");
+});
+
 /* ---------- heroes, XP, boons and the Bounty Board ---------- */
 const HERO_KEY = "homebox-hero";
 const XP = { star: 10, overdue: 10, objective: 0, campaign: 50 }; // objectives give no XP (Red: the campaign total is enough)
@@ -2153,7 +2190,7 @@ function renderGuild(ready) {
 dlg.addEventListener("close", () => { const l = S.levelUp; S.levelUp = null; if (l) setTimeout(() => levelUpSheet(...l), 250); });
 /* ---------- local storage (this browser only) ---------- */
 const KEY = "homebox:v1", META = "homebox:meta";
-const COLS = ["items", "tasks", "parts", "projects", "heroes", "boons", "bounties"];
+const COLS = ["items", "tasks", "parts", "projects", "heroes", "boons", "bounties", "settings"];
 const blank = () => Object.fromEntries(COLS.map((c) => [c, {}]));
 function readStore() { try { const d = JSON.parse(localStorage.getItem(KEY)); return d && d.items && d.tasks ? { ...blank(), ...d } : null; } catch { return null; } }
 function meta() { try { return JSON.parse(localStorage.getItem(META)) || {}; } catch { return {}; } }
@@ -2223,7 +2260,7 @@ render();
   localDb.collection("tasks").onSnapshot((s) => { S.tasks = s.docs.map((d) => ({ id: d.id, ...d.data() })); S.loaded.tasks = true; render(); refreshSheet(); });
   localDb.collection("parts").onSnapshot((s) => { S.parts = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
   localDb.collection("projects").onSnapshot((s) => { S.projects = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); refreshSheet(); });
-  for (const c of ["heroes", "boons", "bounties"]) localDb.collection(c).onSnapshot((s) => { S[c] = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); });
+  for (const c of ["heroes", "boons", "bounties", "settings"]) localDb.collection(c).onSnapshot((s) => { S[c] = s.docs.map((d) => ({ id: d.id, ...d.data() })); render(); });
   try { navigator.storage?.persist?.(); } catch {}
   try { if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {}); } catch {}
   await srvInit(); render();
