@@ -98,6 +98,7 @@ nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: 
 .log { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden }
 .log .entry { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 10px 12px; border-top: 1px solid var(--line) }
 .log .entry:first-child { border-top: 0 }
+.claims { margin-top: 18px } .claims summary { cursor: pointer }
 .log .entry .what { overflow-wrap: anywhere } .log .entry .sm { color: var(--muted); font-size: 13px }
 @media (max-width: 480px) { .log .entry { grid-template-columns: minmax(0, 1fr) auto } .log .entry .due { grid-column: 1 / -1 } }
 .log .entry.chk { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center }
@@ -1649,19 +1650,62 @@ const srvPull = () => SRV.on && !SRV.pending && !SRV.timer ? srvRun(async () => 
   await srvReconcile(r.body);
 }) : undefined;
 
+// The last data this device and the server agreed on, so two devices' changes can be merged.
+const BASE_KEY = "homebox:server-base";
+function srvBase() { try { return JSON.parse(localStorage.getItem(BASE_KEY)); } catch { return null; } }
+function srvSetBase(d) { try { localStorage.setItem(BASE_KEY, JSON.stringify(dataOnly(d))); } catch {} }
+const same = (a, b) => stable(a) === stable(b);
+const isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v);
+// Three-way merge: whatever only one side changed wins; when both changed the same field,
+// lists are combined, the later date wins, and otherwise this device's value wins.
+function mergeField(b, l, s) {
+  if (same(l, b)) return s;
+  if (same(s, b) || same(l, s)) return l;
+  if (Array.isArray(l) && Array.isArray(s)) { const seen = new Set(l.map(stable)); return [...l, ...s.filter((x) => !seen.has(stable(x)))]; }
+  if (isDate(l) && isDate(s)) return l > s ? l : s;
+  return l;
+}
+function mergeDoc(b, l, s, col) {
+  if (same(l, b)) return s;
+  if (same(s, b) || same(l, s)) return l;
+  if (!l || !s) return l || s; // deleted on one side, edited on the other: keep the edit
+  const out = {}, base = b || {};
+  for (const k of new Set([...Object.keys(l), ...Object.keys(s)])) { const v = mergeField(base[k], l[k], s[k]); if (v !== undefined) out[k] = v; }
+  if (col === "bounties" && Array.isArray(out.history)) {
+    out.history = out.history.filter((h, i, a) => a.findIndex((x) => x.date === h.date && x.by === h.by) === i).sort((x, y) => (y.date || "").localeCompare(x.date || "")).slice(0, 60);
+    const top = out.history[0];
+    Object.assign(out, { lastDone: top?.date || "", doneBy: top?.by || "", passed: !!top?.passed });
+  }
+  return out;
+}
+function mergeData(base, local, server) {
+  return Object.fromEntries(COLS.map((c) => {
+    const B = base[c] || {}, L = local[c] || {}, S = server[c] || {}, out = {};
+    for (const id of new Set([...Object.keys(L), ...Object.keys(S)])) { const v = mergeDoc(B[id], L[id], S[id], c); if (v) out[id] = v; }
+    return [c, out];
+  }));
+}
 async function srvReconcile(doc) {
   const m = meta(), local = dataOnly(), ls = sigOf(local), ss = sigOf(doc.data);
-  if (ss === ls) return setMeta({ serverVersion: doc.version, serverSig: ls });
+  if (ss === ls) { srvSetBase(doc.data); return setMeta({ serverVersion: doc.version, serverSig: ls }); }
   if (doc.version === 0) { setMeta({ serverVersion: 0 }); return srvPushNow(true); }
   const localChanged = ls !== m.serverSig;
   if (!localChanged || (m.serverVersion == null && onlyExamples(local))) return srvApply(doc, m.serverVersion != null);
   if (doc.version === m.serverVersion) return srvPushNow();
-  srvConflict(doc);
+  // Both this device and another one changed things: combine them instead of picking one.
+  const merged = mergeData(srvBase() || {}, local, dataOnly(doc.data));
+  SRV.applying = true;
+  try { await localDb.replace(merged); } finally { SRV.applying = false; }
+  setMeta({ serverVersion: doc.version, serverSig: sigOf(doc.data) });
+  srvSetBase(doc.data);
+  if (sigOf(merged) !== ss) await srvPushNow();
+  toast("Combined with changes from another device");
 }
 async function srvApply(doc, announce) {
   SRV.applying = true;
   try { await localDb.replace(doc.data); } finally { SRV.applying = false; }
   setMeta({ serverVersion: doc.version, serverSig: localSig() });
+  srvSetBase(doc.data);
   if (announce) toast("Updated with changes from another device");
 }
 async function srvPushNow(force) {
@@ -1672,6 +1716,7 @@ async function srvPushNow(force) {
   if (r.status === 409 && r.body) return srvReconcile(r.body);
   if (r.status !== 200) throw new Error();
   setMeta({ serverVersion: r.body.version, serverSig: sig });
+  srvSetBase(data);
   SRV.status = "connected"; SRV.lastSync = new Date();
 }
 function srvSchedule() {
@@ -2145,6 +2190,8 @@ function renderBounties(ready) {
       <div class="side">${done ? `<button class="btn small" data-act="bounty-undo" data-id="${b.id}">Undo</button>` : `<button class="btn small primary" data-act="bounty-claim" data-id="${b.id}">${tv("Done", "Claim bounty")}</button>${canPass ? `<button class="btn small" data-act="bounty-pass" data-id="${b.id}" title="Spend ${pc} ${tokenWord(pc)}">${tv("Use a pass", "Use Pass scroll")} (${pc})</button>` : ""}`}<button class="btn small" data-act="edit-bounty" data-id="${b.id}">Edit</button></div>
     </div>`;
   };
+  const claims = S.bounties.flatMap((b) => (b.history || []).map((h) => ({ ...h, title: b.title }))).sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 15);
+  const recent = claims.length ? `<details class="claims" open><summary><h3 class="grp" style="display:inline">${tv("Recently done", "Recent claims")}</h3></summary><div class="log">${claims.map((c) => `<div class="entry"><span class="due">${esc(nice(c.date))}</span><span class="what">${esc(c.title)}${c.passed ? ` <span class="sm">(${tv("pass", "Pass scroll")})</span>` : ""}</span><b>${esc(heroById(c.by)?.name || "Someone")}</b></div>`).join("")}</div></details>` : "";
   box.innerHTML = who + Object.entries(BOUNTY_EVERY).map(([k, [, label]]) => {
     const list = S.bounties.filter((b) => (b.every || "week") === k && !bountyPaused(b)).sort((a, b) => bountyDone(a) - bountyDone(b) || a.title.localeCompare(b.title));
     if (!list.length) return "";
@@ -2153,7 +2200,7 @@ function renderBounties(ready) {
   }).join("") + (() => {
     const paused = S.bounties.filter(bountyPaused).sort((a, b) => a.pausedUntil.localeCompare(b.pausedUntil));
     return paused.length ? `<h3 class="grp">${tv("Paused chores", "Bounties on hold")} · ${paused.length}</h3><div class="list">${paused.map(row).join("")}</div>` : "";
-  })();
+  })() + recent;
 }
 function renderGuild(ready) {
   const box = $("guild-list"); if (!box) return;
