@@ -1246,6 +1246,7 @@ document.addEventListener("click", async (e) => {
       return;
     }
     case "bounty-claim": {
+      if (await alreadyClaimed(id)) return;
       const b = S.bounties.find((x) => x.id === id); if (!b) return;
       const d = today(), h = myHero(); let gain = "";
       if (await write(async () => {
@@ -1255,6 +1256,7 @@ document.addEventListener("click", async (e) => {
       return;
     }
     case "bounty-pass": {
+      if (await alreadyClaimed(id)) return;
       const b = S.bounties.find((x) => x.id === id), h = myHero(), pass = S.boons.find((x) => x.pass); if (!b || !h || !pass) return;
       const cost = passCost(b); if (heroTokens(h) < cost) return;
       if (!arm(el, `Spend ${cost} ${tokenWord(cost)}?`)) return;
@@ -1740,7 +1742,24 @@ function srvResolve(which) {
   setMeta({ serverVersion: doc.version });
   return srvRun(() => srvPushNow(true));
 }
-setInterval(() => { if (!document.hidden) srvPull(); }, 30000);
+// Get the latest from the server before a claim, so two people can't claim the same bounty.
+async function srvFresh() {
+  if (!SRV.on || SRV.status === "signed-out") return;
+  const go = (async () => {
+    if (SRV.timer) { clearTimeout(SRV.timer); SRV.timer = null; await srvRun(() => srvPushNow()); }
+    await srvPull();
+  })();
+  await Promise.race([go, new Promise((r) => setTimeout(r, 4000))]);
+}
+async function alreadyClaimed(id) {
+  await srvFresh();
+  const b = S.bounties.find((x) => x.id === id);
+  if (!b || !bountyDone(b)) return false;
+  const who = heroById(b.doneBy)?.name;
+  toast(`${tv("Already done", "Already claimed")}${who ? " by " + who : ""}`);
+  return true;
+}
+setInterval(() => { if (!document.hidden) srvPull(); }, 15000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) srvPull(); });
 window.addEventListener("online", () => srvPull());
 
@@ -2173,8 +2192,12 @@ function renderBounties(ready) {
   const box = $("bounties-list"); if (!box) return;
   if (!ready) { box.innerHTML = ""; return; }
   const me = myHero();
-  const who = !S.heroes.length ? `<div class="notice"><span>${tv("Add the people in your house on the XP tab, so each chore counts for whoever did it.", "Add your party in the Guild Hall, so each bounty counts for whoever claims it.")}</span><button class="btn small primary" data-act="new-hero">${tv("Add a person", "Add a hero")}</button></div>`
+  let who = !S.heroes.length ? `<div class="notice"><span>${tv("Add the people in your house on the XP tab, so each chore counts for whoever did it.", "Add your party in the Guild Hall, so each bounty counts for whoever claims it.")}</span><button class="btn small primary" data-act="new-hero">${tv("Add a person", "Add a hero")}</button></div>`
     : !me ? `<div class="notice"><span>${tv("Who's using this device? Pick yourself so your chores earn XP.", "Who holds this device? Pick your hero so claimed bounties earn XP.")}</span><button class="btn small primary" data-act="go-guild">${tv("Pick me", "Choose hero")}</button></div>` : "";
+  const sync = !SRV.on ? `<div class="notice"><span><b>Not syncing.</b> This copy isn't connected to your home server, so ${tv("chores you mark done", "claims")} stay on this device only. Open Homebox from <b>http://192.168.8.20:8081</b> instead.</span></div>`
+    : SRV.status === "signed-out" ? `<div class="notice"><span><b>Not syncing.</b> Sign in so the other devices see your ${tv("chores", "claims")}.</span><button class="btn small primary" data-act="srv-signin">Sign in</button></div>`
+    : SRV.status === "offline" ? `<div class="notice"><span><b>Can't reach your home server.</b> ${tv("Chores you mark done", "Claims")} are kept here and sync when it's back.</span></div>` : "";
+  who = sync + who;
   if (!S.bounties.length) { box.innerHTML = who + `<div class="empty">${tv("No chores yet. Add the regular jobs around the house, like trash night or the litter box.", "The board is empty. Post the regular jobs around the keep, like trash night or the litter box.")}</div>`; return; }
   const pass = S.boons.find((b) => b.pass);
   const row = (b) => {
