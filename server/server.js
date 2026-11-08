@@ -171,6 +171,8 @@ async function api(req, res, route, url) {
   }
   if (route === "data" && req.method === "GET") return send(res, 200, await readJson(DATA_FILE, emptyDoc()));
   if (route === "data" && req.method === "PUT") {
+    // Old copies of the app replaced the whole server copy on a conflict. Only accept saves from the merging version.
+    if (req.headers["x-homebox-sync"] !== "2") return send(res, 426, { error: "Reload Homebox to get the latest version." });
     const body = await readBody(req);
     if (!validData(body.data)) return send(res, 400, { error: "That doesn't look like Homebox data." });
     return serial(async () => {
