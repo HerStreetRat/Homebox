@@ -1270,6 +1270,8 @@ document.addEventListener("click", async (e) => {
     }
     case "bounty-undo": {
       const b = S.bounties.find((x) => x.id === id); if (!b) return;
+      if (!arm(el, `Undo "${b.title.length > 24 ? b.title.slice(0, 22) + "…" : b.title}"?`)) return;
+      armed = null;
       const [, ...rest] = b.history || [], h = heroById(b.doneBy);
       await write(async () => {
         if (b.passed && h) { const i = (h.spent || []).map((x) => x.name).lastIndexOf((S.boons.find((x) => x.pass)?.name || "Pass scroll") + ": " + b.title); if (i >= 0) await S.db.doc("heroes/" + h.id).update({ spent: h.spent.filter((_, j) => j !== i) }); }
