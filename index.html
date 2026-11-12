@@ -98,6 +98,10 @@ nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: 
 .log { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden }
 .log .entry { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 10px 12px; border-top: 1px solid var(--line) }
 .log .entry:first-child { border-top: 0 }
+.bchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; position: sticky; top: 0; z-index: 2; padding: 8px 0; background: var(--bg) }
+.bchips .quiet { opacity: .6 }
+.done-fold { margin-top: 8px } .done-fold summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 6px 2px }
+#bounties-list h3.grp { scroll-margin-top: 64px }
 .claims { margin-top: 18px } .claims summary { cursor: pointer }
 .log .entry .what { overflow-wrap: anywhere } .log .entry .sm { color: var(--muted); font-size: 13px }
 @media (max-width: 480px) { .log .entry { grid-template-columns: minmax(0, 1fr) auto } .log .entry .due { grid-column: 1 / -1 } }
@@ -1237,6 +1241,7 @@ document.addEventListener("click", async (e) => {
     }
     case "new-bounty": return bountyForm();
     case "bounty-list": return bountyListForm();
+    case "bounty-jump": { const t = $("bg-" + id); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     case "bounty-resume": await write(() => S.db.doc("bounties/" + id).update({ pausedUntil: "" }), tv("Chore resumed", "Bounty back on the board")); return;
     case "edit-bounty": return bountyForm(S.bounties.find((b) => b.id === id));
     case "del-bounty": {
@@ -1248,10 +1253,10 @@ document.addEventListener("click", async (e) => {
     case "bounty-claim": {
       if (await alreadyClaimed(id)) return;
       const b = S.bounties.find((x) => x.id === id); if (!b) return;
-      const d = today(), h = myHero(); let gain = "";
+      const d = today(), h = myHero(), missed = bountyMissed(b); let gain = "";
       if (await write(async () => {
         await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h?.id || "", passed: false, history: [{ date: d, by: h?.id || "" }, ...(b.history || [])].slice(0, 60) });
-        gain = await awardXp(starsOf(b) * XP.star, b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
+        gain = await awardXp(starsOf(b) * XP.star + (missed ? XP.missed : 0), b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
       })) toast((h ? tv("Done", "Bounty claimed!") : tv("Done. Pick who you are on the XP tab to earn XP.", "Claimed! Choose your hero in the Guild Hall to earn XP.")) + gain);
       return;
     }
@@ -1366,6 +1371,7 @@ document.addEventListener("click", async (e) => {
     case "print-labels": return printLabels(id ? [id] : [...document.querySelectorAll("#items-list [data-act=open-item]")].map((x) => x.dataset.id));
     case "srv-use-local": return srvResolve("local");  }
 });
+document.addEventListener("toggle", (e) => { const k = e.target.dataset?.k; if (!k || !e.target.matches(".done-fold")) return; S.doneOpen = S.doneOpen || new Set(); e.target.open ? S.doneOpen.add(k) : S.doneOpen.delete(k); }, true);
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".row.clickable")) { e.preventDefault(); e.target.click(); }
 });
@@ -2056,14 +2062,14 @@ document.addEventListener("change", async (e) => {
 
 /* ---------- heroes, XP, boons and the Bounty Board ---------- */
 const HERO_KEY = "homebox-hero";
-const XP = { star: 10, overdue: 10, objective: 0, campaign: 50 }; // objectives give no XP (Red: the campaign total is enough)
+const XP = { star: 10, overdue: 10, missed: 5, objective: 0, campaign: 50 }; // objectives give no XP (Red: the campaign total is enough)
 // Difficulty: 1 to 3 stars, 10 XP per star. Older records: "big" tasks count as 3, a bounty's old XP number is rounded to stars.
-const starsOf = (x) => Math.min(3, Math.max(1, +x.stars || (x.big ? 3 : x.xp ? Math.round(+x.xp / 10) : 1)));
+const starsOf = (x) => +x.stars === 0.5 ? 0.5 : Math.min(3, Math.max(1, +x.stars || (x.big ? 3 : x.xp ? Math.round(+x.xp / 10) : 1)));
 // A Pass scroll costs its shop price per star of the bounty or quest it skips.
-const passCost = (x) => { const pass = S.boons.find((b) => b.pass); return pass ? (+pass.cost || 1) * starsOf(x) : 0; };
+const passCost = (x) => { const pass = S.boons.find((b) => b.pass); return pass ? Math.ceil((+pass.cost || 1) * starsOf(x)) : 0; };
 const canPassX = (x) => { const h = myHero(), c = passCost(x); return !!(h && c && heroTokens(h) >= c); };
-const starText = (n) => "★".repeat(n) + "☆".repeat(3 - n);
-const starSelect = (x) => `<label class="f">Difficulty<select name="stars">${[1, 2, 3].map((n) => `<option value="${n}"${starsOf(x) === n ? " selected" : ""}>${starText(n)} · ${n * XP.star} XP</option>`).join("")}</select></label>`;
+const starText = (n) => n === 0.5 ? "½★" : "★".repeat(n) + "☆".repeat(3 - n);
+const starSelect = (x) => `<label class="f">Difficulty<select name="stars">${[0.5, 1, 2, 3].map((n) => `<option value="${n}"${starsOf(x) === n ? " selected" : ""}>${starText(n)} · ${n * XP.star} XP</option>`).join("")}</select></label>`;
 const levelNeed = (lvl) => 100 + 25 * (lvl - 1);
 function levelOf(total) { let lvl = 1, left = Math.max(0, total); while (left >= levelNeed(lvl)) { left -= levelNeed(lvl); lvl++; } return { lvl, into: left, need: levelNeed(lvl) }; }
 const heroXp = (h) => (h.xp || []).reduce((n, e) => n + (+e.amount || 0), 0);
@@ -2162,7 +2168,7 @@ function parseBountyList(text) {
     line = line.replace(/^[-*•\s]+/, "").trim(); if (!line) continue;
     const head = line.match(/^([^:]+):\s*$/);
     if (head) { const hit = EVERY_WORDS.find(([re]) => re.test(head[1].trim().toLowerCase())); if (hit) every = hit[1]; continue; }
-    const st = line.match(/\s*\*([123])\s*$/); const stars = st ? +st[1] : 1; if (st) line = line.slice(0, st.index).trim();
+    const st = line.match(/\s*\*(½|0?\.5|[123])\s*$/); const stars = st ? (/[½.]/.test(st[1]) ? 0.5 : +st[1]) : 1; if (st) line = line.slice(0, st.index).trim();
     out.push({ title: line, every, stars });
   }
   return out;
@@ -2170,13 +2176,21 @@ function parseBountyList(text) {
 function bountyListForm() {
   openSheet(`<form id="bounty-list-form">
     <h2>${tv("Add chores from a list", "Post bounties from a list")}</h2>
-    <p class="sm">One chore per line. A line like <b>Weekly:</b>, <b>Biweekly:</b>, <b>Monthly:</b>, <b>Every 2 months:</b>, <b>Quarterly:</b>, <b>Every 6 months:</b>, <b>Yearly:</b> or <b>As needed:</b> sets the schedule for the lines below it. Add <b>*2</b> or <b>*3</b> at the end of a line for 2 or 3 stars. Chores already on the board are skipped.</p>
+    <p class="sm">One chore per line. A line like <b>Weekly:</b>, <b>Biweekly:</b>, <b>Monthly:</b>, <b>Every 2 months:</b>, <b>Quarterly:</b>, <b>Every 6 months:</b>, <b>Yearly:</b> or <b>As needed:</b> sets the schedule for the lines below it. Add <b>*½</b>, <b>*2</b> or <b>*3</b> at the end of a line for a half, 2 or 3 stars. Chores already on the board are skipped.</p>
     <div class="fields"><label class="f full">List<textarea name="list" rows="12" placeholder="Weekly:\nScoop cat litter\nTake out trash cans *2\n\nMonthly:\nClean kitchen *2"></textarea></label></div>
     <footer><div class="r"><button type="button" class="btn" data-act="close">Cancel</button><button class="btn primary" type="submit">Add all</button></div></footer>
   </form>`);
 }
 const bountyPaused = (b) => !!b.pausedUntil && b.pausedUntil > today();
 const bountyDone = (b) => !!b.lastDone && b.lastDone >= periodStart(b.every || "week");
+// Missed: the last round ended without a claim (not for "as needed", paused, or bounties added this round). Worth +5 once, however many rounds were missed.
+function bountyMissed(b) {
+  const e = b.every || "week"; if (e === "asneeded" || bountyPaused(b) || bountyDone(b)) return false;
+  const cur = periodStart(e), y = parse(cur); y.setDate(y.getDate() - 1); const prev = periodStart(e, fmt(y));
+  if (b.createdAt && b.createdAt.slice(0, 10) >= cur) return false;
+  if (b.pausedUntil && b.pausedUntil > prev) return false;
+  return !(b.lastDone && b.lastDone >= prev);
+}
 function bountyForm(b = {}) {
   openSheet(`<form id="bounty-form" data-id="${esc(b.id || "")}">
     <h2>${b.id ? tv("Edit chore", "Edit bounty") : tv("Add a chore", "Post a bounty")}</h2>
@@ -2211,17 +2225,18 @@ function renderBounties(ready) {
     return `<div class="row ${done ? "ok" : ""}">
       <span class="stripe"></span>
       <div class="main"><div class="title">${esc(b.title)}</div>
-        <div class="meta">${done ? `<span>${b.passed ? tv("Skipped with a pass", "Skipped with a Pass scroll") : tv("Done", "Claimed")}${by ? " by " + esc(by) : ""} · ${esc(nice(b.lastDone))}</span>` : `<span>${BOUNTY_EVERY[b.every || "week"][0]}</span>`}<span title="${starsOf(b) * XP.star} XP">${starText(starsOf(b))}</span>${b.notes ? `<span>${esc(b.notes)}</span>` : ""}</div></div>
+        <div class="meta">${done ? `<span>${b.passed ? tv("Skipped with a pass", "Skipped with a Pass scroll") : tv("Done", "Claimed")}${by ? " by " + esc(by) : ""} · ${esc(nice(b.lastDone))}</span>` : `<span>${BOUNTY_EVERY[b.every || "week"][0]}</span>${bountyMissed(b) ? `<span class="txt-soon" title="Missed last round: +${XP.missed} XP">Missed · +${XP.missed}</span>` : ""}`}<span title="${starsOf(b) * XP.star} XP">${starText(starsOf(b))}</span>${b.notes ? `<span>${esc(b.notes)}</span>` : ""}</div></div>
       <div class="side">${done ? `<button class="btn small" data-act="bounty-undo" data-id="${b.id}">Undo</button>` : `<button class="btn small primary" data-act="bounty-claim" data-id="${b.id}">${tv("Done", "Claim bounty")}</button>${canPass ? `<button class="btn small" data-act="bounty-pass" data-id="${b.id}" title="Spend ${pc} ${tokenWord(pc)}">${tv("Use a pass", "Use Pass scroll")} (${pc})</button>` : ""}`}<button class="btn small" data-act="edit-bounty" data-id="${b.id}">Edit</button></div>
     </div>`;
   };
   const claims = S.bounties.flatMap((b) => (b.history || []).map((h) => ({ ...h, title: b.title }))).sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 15);
   const recent = claims.length ? `<details class="claims" open><summary><h3 class="grp" style="display:inline">${tv("Recently done", "Recent claims")}</h3></summary><div class="log">${claims.map((c) => `<div class="entry"><span class="due">${esc(nice(c.date))}</span><span class="what">${esc(c.title)}${c.passed ? ` <span class="sm">(${tv("pass", "Pass scroll")})</span>` : ""}</span><b>${esc(heroById(c.by)?.name || "Someone")}</b></div>`).join("")}</div></details>` : "";
-  box.innerHTML = who + Object.entries(BOUNTY_EVERY).map(([k, [, label]]) => {
-    const list = S.bounties.filter((b) => (b.every || "week") === k && !bountyPaused(b)).sort((a, b) => bountyDone(a) - bountyDone(b) || a.title.localeCompare(b.title));
-    if (!list.length) return "";
-    const open = list.filter((b) => !bountyDone(b)).length;
-    return `<h3 class="grp">${tv(label.replace(/bounties/i, (m) => m[0] === "B" ? "Chores" : "chores"), label)} · ${open} ${tv("left", "open")}</h3><div class="list">${list.map(row).join("")}</div>`;
+  const groups = Object.entries(BOUNTY_EVERY).map(([k, [, label]]) => [k, label, S.bounties.filter((b) => (b.every || "week") === k && !bountyPaused(b)).sort((a, b) => a.title.localeCompare(b.title))]).filter((g) => g[2].length);
+  const chips = groups.length > 1 ? `<div class="bchips">${groups.map(([k, , list]) => { const open = list.filter((b) => !bountyDone(b)).length; return `<button class="btn small${open ? "" : " quiet"}" data-act="bounty-jump" data-id="${k}">${BOUNTY_EVERY[k][0]} · ${open}</button>`; }).join("")}</div>` : "";
+  box.innerHTML = who + chips + groups.map(([k, label, list]) => {
+    const open = list.filter((b) => !bountyDone(b)), done = list.filter(bountyDone);
+    const fold = done.length ? `<details class="done-fold" data-k="${k}"${S.doneOpen?.has(k) ? " open" : ""}><summary>${tv("Done", "Claimed")} (${done.length})</summary><div class="list">${done.map(row).join("")}</div></details>` : "";
+    return `<h3 class="grp" id="bg-${k}">${tv(label.replace(/bounties/i, (m) => m[0] === "B" ? "Chores" : "chores"), label)} · ${open.length} ${tv("left", "open")}</h3>${open.length ? `<div class="list">${open.map(row).join("")}</div>` : `<p class="sm">${tv("All done this round.", "All claimed this round.")}</p>`}${fold}`;
   }).join("") + (() => {
     const paused = S.bounties.filter(bountyPaused).sort((a, b) => a.pausedUntil.localeCompare(b.pausedUntil));
     return paused.length ? `<h3 class="grp">${tv("Paused chores", "Bounties on hold")} · ${paused.length}</h3><div class="list">${paused.map(row).join("")}</div>` : "";
