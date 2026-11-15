@@ -2169,7 +2169,7 @@ const passCost = (x) => { const pass = S.boons.find((b) => b.pass); return pass 
 const canPassX = (x) => { const h = myHero(), c = passCost(x); return !!(h && c && heroTokens(h) >= c); };
 const starText = (n) => n === 0.5 ? "½★" : "★".repeat(n) + "☆".repeat(3 - n);
 const starSelect = (x) => `<label class="f">Difficulty<select name="stars">${[0.5, 1, 2, 3].map((n) => `<option value="${n}"${starsOf(x) === n ? " selected" : ""}>${starText(n)} · ${n * XP.star} XP</option>`).join("")}</select></label>`;
-const levelNeed = (lvl) => 100 + 25 * (lvl - 1);
+const levelNeed = () => 100;
 function levelOf(total) { let lvl = 1, left = Math.max(0, total); while (left >= levelNeed(lvl)) { left -= levelNeed(lvl); lvl++; } return { lvl, into: left, need: levelNeed(lvl) }; }
 const heroXp = (h) => (h.xp || []).reduce((n, e) => n + (+e.amount || 0), 0);
 const heroSpent = (h) => (h.spent || []).reduce((n, s) => n + (+s.cost || 0), 0);
