@@ -714,7 +714,9 @@ function upkeepTask(x) {
   if (!x.itemId) return null;
   const same = S.tasks.filter((t) => t.itemId === x.itemId);
   const word = ((x.name || "").match(UPKEEP_RE) || [""])[0].toLowerCase();
-  return same.find((t) => word && t.title.toLowerCase().includes(word.replace(/-/g, ""))) || same.find((t) => /replace|change|swap/i.test(t.title)) || null;
+  // Only quests that swap something count: "Clean the grease filters" is not a filter replacement.
+  const swaps = same.filter((t) => /replace|change|swap|new /i.test(t.title));
+  return swaps.find((t) => word && t.title.toLowerCase().includes(word.replace(/-/g, ""))) || (swaps.length === 1 ? swaps[0] : null);
 }
 function upkeepPerYear(x) {
   const t = upkeepTask(x);
