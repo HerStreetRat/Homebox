@@ -100,6 +100,7 @@ nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: 
 .log .entry:first-child { border-top: 0 }
 .bchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; position: sticky; top: 0; z-index: 2; padding: 8px 0; background: var(--bg) }
 .bchips .quiet { opacity: .6 }
+.far-fold > summary { cursor: pointer; list-style: none } .far-fold > summary::-webkit-details-marker { display: none } .far-fold .caret { display: inline-block; transition: transform .15s } .far-fold[open] .caret { transform: rotate(90deg) }
 .done-fold { margin-top: 8px } .done-fold summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 6px 2px }
 #bounties-list h3.grp { scroll-margin-top: 64px }
 .claims { margin-top: 18px } .claims summary { cursor: pointer }
@@ -665,8 +666,12 @@ function renderUpcoming(ready) {
     [tv("Within 3 months", "Quests on the horizon"), sorted.filter((t) => { const n = daysUntil(t.nextDue); return n > SOON_DAYS && n <= 90; })],
     [tv("More than 3 months out", "Distant quests"), sorted.filter((t) => daysUntil(t.nextDue) > 90)],
   ];
-  el.innerHTML = groups.filter(([, l]) => l.length).map(([h, l]) =>
-    `<div class="group"><h3>${h} · ${l.length}</h3><div class="list">${l.map((t) => taskRow(t)).join("")}</div></div>`).join("");
+  // The far-off group folds away (closed by default, remembered on this device; always open while searching).
+  let farOpen = !!q; try { farOpen = farOpen || localStorage.getItem("homebox-far-open") === "1"; } catch {}
+  el.innerHTML = groups.filter(([, l]) => l.length).map(([h, l], i, all) => {
+    const rows = `<div class="list">${l.map((t) => taskRow(t)).join("")}</div>`;
+    return l === groups[3][1] ? `<details class="group far-fold"${farOpen ? " open" : ""}><summary><h3>${h} · ${l.length} <span class="caret" aria-hidden="true">▸</span></h3></summary>${rows}</details>` : `<div class="group"><h3>${h} · ${l.length}</h3>${rows}</div>`;
+  }).join("");
 }
 
 function renderItems(ready) {
@@ -1450,6 +1455,7 @@ document.addEventListener("click", async (e) => {
     case "print-labels": return printLabels(id ? [id] : [...document.querySelectorAll("#items-list [data-act=open-item]")].map((x) => x.dataset.id));
     case "srv-use-local": return srvResolve("local");  }
 });
+document.addEventListener("toggle", (e) => { if (e.target.matches?.(".far-fold") && !$("uq").value.trim()) try { localStorage.setItem("homebox-far-open", e.target.open ? "1" : "0"); } catch {} }, true);
 document.addEventListener("toggle", (e) => { const k = e.target.dataset?.k; if (!k || !e.target.matches(".done-fold")) return; S.doneOpen = S.doneOpen || new Set(); e.target.open ? S.doneOpen.add(k) : S.doneOpen.delete(k); }, true);
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".row.clickable")) { e.preventDefault(); e.target.click(); }
