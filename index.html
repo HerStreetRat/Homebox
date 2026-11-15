@@ -725,6 +725,7 @@ function upkeepNext(x) {
   const t = upkeepTask(x); if (t) return t.nextDue || "";
   return x.lastReplaced && +x.everyMonths > 0 ? addInterval(x.lastReplaced, +x.everyMonths, "months") : "";
 }
+const perSwap = (x) => Math.max(1, +x.perSwap || 1);
 const upkeepEvery = (x) => { const t = upkeepTask(x); if (t) return every(t); return +x.everyMonths > 0 ? `Every ${+x.everyMonths} month${+x.everyMonths === 1 ? "" : "s"}` : ""; };
 function renderUpkeep(ready) {
   const el = $("upkeep-list"); if (!el) return;
@@ -732,23 +733,24 @@ function renderUpkeep(ready) {
   if (!list.length) { el.innerHTML = ""; return; }
   list.sort((a, b) => (upkeepNext(a) || "9999").localeCompare(upkeepNext(b) || "9999") || a.name.localeCompare(b.name));
   el.innerHTML = `<h3 class="grp">Upkeep · ${list.length}</h3><div class="list">${list.map((x) => {
-    const it = itemById(x.itemId), next = upkeepNext(x), q = x.qty === "" || x.qty == null ? null : +x.qty, py = upkeepPerYear(x), cost = money(x.price) * py;
-    const stock = q == null ? `<span class="pill none">Spares: ?</span>` : q <= 0 ? `<span class="pill over">Out of spares</span>` : q <= 1 ? `<span class="pill soon">${q} spare left</span>` : `<span class="pill none" style="color:var(--ink)">${q} spares</span>`;
+    const it = itemById(x.itemId), next = upkeepNext(x), q = x.qty === "" || x.qty == null ? null : +x.qty, py = upkeepPerYear(x), n = perSwap(x), cost = money(x.price) * py * n;
+    const swaps = q == null ? 0 : Math.floor(q / n), sp = `${q} spare${q === 1 ? "" : "s"}${n > 1 ? ` · ${swaps} swap${swaps === 1 ? "" : "s"}` : ""}`;
+    const stock = q == null ? `<span class="pill none">Spares: ?</span>` : swaps <= 0 ? `<span class="pill over">${q > 0 ? sp + " · not enough" : "Out of spares"}</span>` : swaps <= 1 ? `<span class="pill soon">${sp} left</span>` : `<span class="pill none" style="color:var(--ink)">${sp}</span>`;
     const due = next ? (daysUntil(next) < 0 ? `<span class="txt-over">Swap overdue (${esc(nice(next))})</span>` : `<span>Next swap ${esc(nice(next))}</span>`) : "";
     return `<div class="row"><span class="stripe"></span>
       <div class="main"><div class="title"><button class="btn link" data-act="edit-part" data-id="${x.id}">${esc(x.name)}</button></div>
-        <div class="meta">${it ? `<span>For ${esc(itemName(it))}</span>` : ""}${upkeepEvery(x) ? `<span>${esc(upkeepEvery(x))}</span>` : ""}${due}${cost ? `<span>${fmtMoney(cost)} / yr</span>` : ""}</div></div>
+        <div class="meta">${it ? `<span>For ${esc(itemName(it))}</span>` : ""}${n > 1 ? `<span>Uses ${n} at a time</span>` : ""}${upkeepEvery(x) ? `<span>${esc(upkeepEvery(x))}</span>` : ""}${due}${cost ? `<span>${fmtMoney(cost)} / yr</span>` : ""}</div></div>
       <div class="side">${stock}<button class="btn small primary" data-act="upkeep-replaced" data-id="${x.id}">Replaced</button></div></div>`;
   }).join("")}</div><h3 class="grp">All parts &amp; supplies</h3>`;
 }
 function renderUpkeepCost(ready) {
   const el = $("upkeep-cost-list"); if (!el) return;
-  const rows = ready ? S.parts.filter((x) => !x.example && isUpkeep(x)).map((x) => ({ x, py: upkeepPerYear(x), price: money(x.price) })) : [];
+  const rows = ready ? S.parts.filter((x) => !x.example && isUpkeep(x)).map((x) => ({ x, py: upkeepPerYear(x) * perSwap(x), price: money(x.price) })) : [];
   if (!rows.length) { el.innerHTML = ""; return; }
   rows.sort((a, b) => b.py * b.price - a.py * a.price);
   const tot = rows.reduce((n, r) => n + r.py * r.price, 0), need = rows.filter((r) => !r.price || !r.py);
   el.innerHTML = `<h3 class="grp">${tv("Upkeep costs", "Upkeep costs")}</h3>
-    ${rows.some((r) => r.price && r.py) ? `<div class="tbl-wrap"><table class="spend"><thead><tr><th>What</th><th>Swaps / year</th><th>Price each</th><th>$ / year</th></tr></thead><tbody>
+    ${rows.some((r) => r.price && r.py) ? `<div class="tbl-wrap"><table class="spend"><thead><tr><th>What</th><th>Used / year</th><th>Price each</th><th>$ / year</th></tr></thead><tbody>
       ${rows.filter((r) => r.price && r.py).map((r) => `<tr><td><button class="btn link" data-act="edit-part" data-id="${esc(r.x.id)}">${esc(r.x.name)}</button></td><td>${+r.py.toFixed(1)}</td><td>${fmtMoney(r.price)}</td><td><b>${fmtMoney(r.py * r.price)}</b></td></tr>`).join("")}
       <tr><td><b>Total</b></td><td></td><td></td><td><b>${fmtMoney(tot)}</b></td></tr></tbody></table></div>` : ""}
     ${need.length ? `<p class="sm">Need a price or schedule: ${need.map((r) => `<button class="btn link" data-act="edit-part" data-id="${esc(r.x.id)}">${esc(r.x.name)}</button>`).join(", ")}</p>` : ""}`;
@@ -1066,6 +1068,7 @@ function partForm(x = {}, back = "") {
       <label class="f full">Product link<input id="p-url" name="url" type="url" value="${esc(x.url)}" placeholder="https://…"></label>
       <label class="f full">Used for<select id="p-item" name="itemId"><option value="">General, not tied to one item</option>${opts}</select></label>
       <label class="f">Upkeep (replaced regularly)?<select id="p-upkeep" name="upkeep">${[["", "Auto (filters, bulbs, batteries)"], ["yes", "Yes"], ["no", "No"]].map(([v, l]) => `<option value="${v}"${(x.upkeep || "") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label class="f">Used per swap<input id="p-perswap" name="perSwap" type="number" min="1" step="1" inputmode="numeric" value="${esc(x.perSwap)}" placeholder="1"></label>
       <label class="f">Replace every (months)<input id="p-every" name="everyMonths" type="number" min="0" step="any" inputmode="decimal" value="${esc(x.everyMonths)}" placeholder="Uses the linked quest"></label>
       <label class="f full">Swap tracked by quest<select id="p-task" name="taskId"><option value="">${upkeepTask(x) && !x.taskId ? "Auto: " + esc(upkeepTask(x).title) : "None"}</option>${[...S.tasks].sort((a, b) => a.title.localeCompare(b.title)).map((t) => `<option value="${t.id}"${t.id === x.taskId ? " selected" : ""}>${esc(t.title)}</option>`).join("")}</select></label>
       <label class="f full">Notes<textarea id="p-notes" name="notes" placeholder="Fits the kitchen sink supply lines">${esc(x.notes)}</textarea></label>
@@ -1343,10 +1346,10 @@ document.addEventListener("click", async (e) => {
     case "skin": setSkin(isTavern() ? "classic" : "tavern"); toast(isTavern() ? "Welcome to the tavern" : "Back to the classic look"); return;
     case "upkeep-replaced": {
       const x = S.parts.find((p) => p.id === id); if (!x) return;
-      if (!arm(el, "Used a spare?")) return;
+      if (!arm(el, perSwap(x) > 1 ? `Used ${perSwap(x)} spares?` : "Used a spare?")) return;
       armed = null;
-      const t = upkeepTask(x), q = x.qty === "" || x.qty == null ? null : +x.qty, d = today();
-      await write(() => S.db.doc("parts/" + id).update({ lastReplaced: d, ...(q > 0 ? { qty: String(q - 1) } : {}) }), t ? "" : `Replaced. ${q > 0 ? `${q - 1} left.` : ""}`);
+      const t = upkeepTask(x), q = x.qty === "" || x.qty == null ? null : +x.qty, d = today(), left = q == null ? null : Math.max(0, q - perSwap(x));
+      await write(() => S.db.doc("parts/" + id).update({ lastReplaced: d, ...(q > 0 ? { qty: String(left) } : {}) }), t ? "" : `Replaced. ${q > 0 ? `${left} left.` : ""}`);
       if (t) { const b = document.createElement("button"); b.hidden = true; b.dataset.act = "done"; b.dataset.id = t.id; document.body.appendChild(b); b.click(); b.remove(); }
       return;
     }
