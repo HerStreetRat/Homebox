@@ -709,7 +709,11 @@ function renderItems(ready) {
 const UPKEEP_RE = /filter|bulb|batter|wick|cartridge filter|pre-?filter/i;
 const isUpkeep = (x) => x.upkeep === "yes" || (!x.upkeep && UPKEEP_RE.test(x.name || ""));
 // The maintenance quest that tracks this swap: the one picked, or a filter/replace quest on the same item.
+// Or a chore on the Bounty Board: claiming it counts as a swap.
+const upkeepBounty = (x) => (x.bountyId && S.bounties.find((b) => b.id === x.bountyId)) || null;
+const BOUNTY_PER_YEAR = { day: 365, week: 52, "2weeks": 26, month: 12, "2months": 6, quarter: 4, "6months": 2, year: 1 };
 function upkeepTask(x) {
+  if (x.bountyId) return null;
   if (x.taskId) return S.tasks.find((t) => t.id === x.taskId) || null;
   if (!x.itemId) return null;
   const same = S.tasks.filter((t) => t.itemId === x.itemId);
@@ -719,6 +723,7 @@ function upkeepTask(x) {
   return swaps.find((t) => word && t.title.toLowerCase().includes(word.replace(/-/g, ""))) || (swaps.length === 1 ? swaps[0] : null);
 }
 function upkeepPerYear(x) {
+  const bb = upkeepBounty(x); if (bb && BOUNTY_PER_YEAR[bb.every || "week"]) return BOUNTY_PER_YEAR[bb.every || "week"];
   const t = upkeepTask(x);
   if (t) { const n = +t.every || 1; return { days: 365, weeks: 52, months: 12, years: 1 }[t.unit || "months"] / n; }
   return +x.everyMonths > 0 ? 12 / +x.everyMonths : 0;
@@ -728,7 +733,7 @@ function upkeepNext(x) {
   return x.lastReplaced && +x.everyMonths > 0 ? addInterval(x.lastReplaced, +x.everyMonths, "months") : "";
 }
 const perSwap = (x) => Math.max(1, +x.perSwap || 1);
-const upkeepEvery = (x) => { const t = upkeepTask(x); if (t) return every(t); const m = +x.everyMonths; return m > 0 ? (m < 1 ? `About every ${Math.round(m * 30.4)} days` : `Every ${m} month${m === 1 ? "" : "s"}`) : ""; };
+const upkeepEvery = (x) => { const bb = upkeepBounty(x); if (bb) return `${BOUNTY_EVERY[bb.every || "week"][0]} (${tv("chore", "bounty")}: ${bb.title})`; const t = upkeepTask(x); if (t) return every(t); const m = +x.everyMonths; return m > 0 ? (m < 1 ? `About every ${Math.round(m * 30.4)} days` : `Every ${m} month${m === 1 ? "" : "s"}`) : ""; };
 function renderUpkeep(ready) {
   const el = $("upkeep-list"); if (!el) return;
   const list = ready ? S.parts.filter((x) => !x.example && isUpkeep(x)) : [];
@@ -1072,7 +1077,7 @@ function partForm(x = {}, back = "") {
       <label class="f">Upkeep (replaced regularly)?<select id="p-upkeep" name="upkeep">${[["", "Auto (filters, bulbs, batteries)"], ["yes", "Yes"], ["no", "No"]].map(([v, l]) => `<option value="${v}"${(x.upkeep || "") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
       <label class="f">Used per swap<input id="p-perswap" name="perSwap" type="number" min="1" step="1" inputmode="numeric" value="${esc(x.perSwap)}" placeholder="1"></label>
       <label class="f">Replace every (months)<input id="p-every" name="everyMonths" type="number" min="0" step="any" inputmode="decimal" value="${esc(x.everyMonths)}" placeholder="Uses the linked quest"></label>
-      <label class="f full">Swap tracked by quest<select id="p-task" name="taskId"><option value="">${upkeepTask(x) && !x.taskId ? "Auto: " + esc(upkeepTask(x).title) : "None"}</option>${[...S.tasks].sort((a, b) => a.title.localeCompare(b.title)).map((t) => `<option value="${t.id}"${t.id === x.taskId ? " selected" : ""}>${esc(t.title)}</option>`).join("")}</select></label>
+      <label class="f full">Swap tracked by quest or bounty<select id="p-task" name="swapLink"><option value="">${upkeepTask(x) && !x.taskId ? "Auto: " + esc(upkeepTask(x).title) : "None"}</option><optgroup label="Quests">${[...S.tasks].sort((a, b) => a.title.localeCompare(b.title)).map((t) => `<option value="t:${t.id}"${t.id === x.taskId && !x.bountyId ? " selected" : ""}>${esc(t.title)}</option>`).join("")}</optgroup>${S.bounties.length ? `<optgroup label="${tv("Chores", "Bounties")}">${[...S.bounties].sort((a, b) => a.title.localeCompare(b.title)).map((b) => `<option value="b:${b.id}"${b.id === x.bountyId ? " selected" : ""}>${esc(b.title)}</option>`).join("")}</optgroup>` : ""}</select></label>
       <label class="f full">Notes<textarea id="p-notes" name="notes" placeholder="Fits the kitchen sink supply lines">${esc(x.notes)}</textarea></label>
     </div>
     ${safeUrl(x.url) ? `<p style="margin:10px 0 0"><a href="${esc(x.url)}" target="_blank" rel="noopener">Open product link</a></p>` : ""}
@@ -1136,6 +1141,8 @@ document.addEventListener("submit", async (e) => {
   if (f.id === "part-form") {
     const d = formData(f), prev = id ? S.parts.find((x) => x.id === id) : null;
     const body = { ...(prev || {}), ...d, updatedAt: new Date().toISOString() };
+    const link = body.swapLink || ""; delete body.swapLink;
+    body.taskId = link.startsWith("t:") ? link.slice(2) : ""; body.bountyId = link.startsWith("b:") ? link.slice(2) : "";
     delete body.id;
     const ref = id ? S.db.doc("parts/" + id) : S.db.collection("parts").doc();
     const back = sheet.dataset.back;
@@ -1316,6 +1323,7 @@ document.addEventListener("click", async (e) => {
       if (await write(async () => {
         await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h?.id || "", passed: false, history: [{ date: d, by: h?.id || "" }, ...(b.history || [])].slice(0, 60) });
         gain = await awardXp(starsOf(b) * XP.star + (missed ? XP.missed : 0), b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
+        gain += await useBountySpares(id, d, -1);
       })) toast((h ? tv("Done", "Bounty claimed!") : tv("Done. Pick who you are on the XP tab to earn XP.", "Claimed! Choose your hero in the Guild Hall to earn XP.")) + gain);
       return;
     }
@@ -1340,6 +1348,7 @@ document.addEventListener("click", async (e) => {
       await write(async () => {
         if (b.passed && h) { const i = (h.spent || []).map((x) => x.name).lastIndexOf((S.boons.find((x) => x.pass)?.name || "Pass scroll") + ": " + b.title); if (i >= 0) await S.db.doc("heroes/" + h.id).update({ spent: h.spent.filter((_, j) => j !== i) }); }
         await revokeXp(`bounty:${id}:${periodStart(b.every || "week", b.lastDone)}`);
+        if (!b.passed) await useBountySpares(id, b.lastDone, +1, rest[0]?.passed ? "" : rest[0]?.date || "");
         await S.db.doc("bounties/" + id).update({ lastDone: rest[0]?.date || "", doneBy: rest[0]?.by || "", passed: !!rest[0]?.passed, history: rest });
       }, "Undone");
       return;
@@ -1350,6 +1359,8 @@ document.addEventListener("click", async (e) => {
       const x = S.parts.find((p) => p.id === id); if (!x) return;
       if (!arm(el, perSwap(x) > 1 ? `Used ${perSwap(x)} spares?` : "Used a spare?")) return;
       armed = null;
+      const bb = upkeepBounty(x);
+      if (bb && !bountyDone(bb)) { const c = document.createElement("button"); c.hidden = true; c.dataset.act = "bounty-claim"; c.dataset.id = bb.id; document.body.appendChild(c); c.click(); c.remove(); return; }
       const t = upkeepTask(x), q = x.qty === "" || x.qty == null ? null : +x.qty, d = today(), left = q == null ? null : Math.max(0, q - perSwap(x));
       await write(() => S.db.doc("parts/" + id).update({ lastReplaced: d, ...(q > 0 ? { qty: String(left) } : {}) }), t ? "" : `Replaced. ${q > 0 ? `${left} left.` : ""}`);
       if (t) { const b = document.createElement("button"); b.hidden = true; b.dataset.act = "done"; b.dataset.id = t.id; document.body.appendChild(b); b.click(); b.remove(); }
@@ -1826,6 +1837,20 @@ async function srvFresh() {
     await srvPull();
   })();
   await Promise.race([go, new Promise((r) => setTimeout(r, 4000))]);
+}
+// Parts whose swap is tracked by this bounty: a claim uses spares (dir -1), an undo puts them back (dir +1).
+async function useBountySpares(id, d, dir, prevDate = "") {
+  const notes = [];
+  for (const x of S.parts.filter((p) => p.bountyId === id)) {
+    const q = x.qty === "" || x.qty == null ? null : +x.qty, n = perSwap(x);
+    if (dir < 0) {
+      await S.db.doc("parts/" + x.id).update({ lastReplaced: d, ...(q > 0 ? { qty: String(Math.max(0, q - n)) } : {}) });
+      if (q != null) notes.push(`${x.name}: ${Math.max(0, q - n)} left`);
+    } else if (x.lastReplaced === d) {
+      await S.db.doc("parts/" + x.id).update({ lastReplaced: prevDate, ...(q != null ? { qty: String(q + n) } : {}) });
+    }
+  }
+  return notes.length ? " · " + notes.join(", ") : "";
 }
 async function alreadyClaimed(id) {
   await srvFresh();
