@@ -726,7 +726,7 @@ function upkeepNext(x) {
   return x.lastReplaced && +x.everyMonths > 0 ? addInterval(x.lastReplaced, +x.everyMonths, "months") : "";
 }
 const perSwap = (x) => Math.max(1, +x.perSwap || 1);
-const upkeepEvery = (x) => { const t = upkeepTask(x); if (t) return every(t); return +x.everyMonths > 0 ? `Every ${+x.everyMonths} month${+x.everyMonths === 1 ? "" : "s"}` : ""; };
+const upkeepEvery = (x) => { const t = upkeepTask(x); if (t) return every(t); const m = +x.everyMonths; return m > 0 ? (m < 1 ? `About every ${Math.round(m * 30.4)} days` : `Every ${m} month${m === 1 ? "" : "s"}`) : ""; };
 function renderUpkeep(ready) {
   const el = $("upkeep-list"); if (!el) return;
   const list = ready ? S.parts.filter((x) => !x.example && isUpkeep(x)) : [];
