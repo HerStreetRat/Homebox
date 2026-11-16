@@ -1359,7 +1359,7 @@ document.addEventListener("click", async (e) => {
       const [, ...rest] = b.history || [], h = heroById(b.doneBy);
       await write(async () => {
         if (b.passed && h) { const i = (h.spent || []).map((x) => x.name).lastIndexOf((S.boons.find((x) => x.pass)?.name || "Pass scroll") + ": " + b.title); if (i >= 0) await S.db.doc("heroes/" + h.id).update({ spent: h.spent.filter((_, j) => j !== i) }); }
-        await revokeXp(`bounty:${id}:${periodStart(b.every || "week", b.lastDone)}`);
+        await revokeXp(`bounty:${id}:${periodStart(b.every || "week", b.lastDone)}`, b.lastDone);
         if (!b.passed) await useBountySpares(id, b.lastDone, +1, rest[0]?.passed ? "" : rest[0]?.date || "");
         await S.db.doc("bounties/" + id).update({ lastDone: rest[0]?.date || "", doneBy: rest[0]?.by || "", passed: !!rest[0]?.passed, history: rest });
       }, "Undone");
@@ -2206,8 +2206,15 @@ async function awardXp(amount, why, ref) {
   return ` +${amount} XP`;
 }
 // Takes back XP given for something that was undone (an unchecked objective).
-async function revokeXp(ref) {
-  for (const h of S.heroes) if ((h.xp || []).some((e) => e.ref === ref)) await S.db.doc("heroes/" + h.id).update({ xp: h.xp.filter((e) => e.ref !== ref) });
+async function revokeXp(ref, date = "") {
+  // A bounty claim's ref ends in its round start; if the round rules changed since (e.g. Monday -> Tuesday weeks), match the same bounty's entry from the claim date instead.
+  const pre = ref.startsWith("bounty:") ? ref.slice(0, ref.lastIndexOf(":") + 1) : "";
+  for (const h of S.heroes) {
+    const xp = h.xp || [];
+    let i = xp.findIndex((e) => e.ref === ref);
+    if (i < 0 && pre && date) i = xp.findLastIndex((e) => e.ref?.startsWith(pre) && e.date === date);
+    if (i >= 0) await S.db.doc("heroes/" + h.id).update({ xp: xp.filter((_, j) => j !== i) });
+  }
 }
 function levelUpSheet(heroId, lvl) {
   const h = heroById(heroId); if (!h) return;
@@ -2257,14 +2264,14 @@ async function seedBoons() { if (S.boons.length) return; for (const b of DEFAULT
 
 /* Bounties: chores that reset every day, week or month. */
 const BOUNTY_EVERY = { day: ["Daily", "Daily bounties"], week: ["Weekly", "Weekly bounties"], "2weeks": ["Every 2 weeks", "Biweekly bounties"], "5weeks": ["Every 5 weeks", "Bounties every 5 weeks"], month: ["Monthly", "Monthly bounties"], "2months": ["Every 2 months", "Bounties every 2 months"], quarter: ["Quarterly", "Quarterly bounties"], "6months": ["Every 6 months", "Bounties every 6 months"], year: ["Yearly", "Yearly bounties"], asneeded: ["As needed", "Bounties as needed"], once: ["One time", "One-time events"] };
-// Start of the current round. Biweekly rounds are counted from Monday, Jan 1 2024; 2-month rounds start Jan, Mar, May...
+// Start of the current round. Weeks start Tuesday; biweekly rounds are counted from Tuesday, Jan 2 2024; 2-month rounds start Jan, Mar, May...
 function periodStart(every, d = today()) {
   if (every === "once") return "0000-01-01"; // one-time events: a single period, so once claimed they stay claimed
   const x = parse(d);
-  if (every === "week" || every === "2weeks" || every === "5weeks") x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
-  if (every === "2weeks" && Math.round((x - new Date(2024, 0, 1)) / 6048e5) % 2) x.setDate(x.getDate() - 7);
-  // 5-week blocks counted from Monday 2024-01-01, so every device agrees on when they reset.
-  if (every === "5weeks") x.setDate(x.getDate() - 7 * (((Math.round((x - new Date(2024, 0, 1)) / 6048e5) % 5) + 5) % 5));
+  if (every === "week" || every === "2weeks" || every === "5weeks") x.setDate(x.getDate() - ((x.getDay() + 5) % 7)); // weeks reset on Tuesday (Red, 2026-11-16)
+  if (every === "2weeks" && Math.round((x - new Date(2024, 0, 2)) / 6048e5) % 2) x.setDate(x.getDate() - 7);
+  // 5-week blocks counted from Tuesday 2024-01-02, so every device agrees on when they reset.
+  if (every === "5weeks") x.setDate(x.getDate() - 7 * (((Math.round((x - new Date(2024, 0, 2)) / 6048e5) % 5) + 5) % 5));
   if (every === "month") x.setDate(1);
   if (every === "2months" || every === "quarter" || every === "6months") x.setMonth(x.getMonth() - (x.getMonth() % ({ "2months": 2, quarter: 3, "6months": 6 })[every]), 1);
   if (every === "year") x.setMonth(0, 1);
