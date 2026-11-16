@@ -858,10 +858,14 @@ function renderProjects(ready) {
     </div>`;
   };
   const rank = (x) => PJ_PRI.indexOf(x.priority) < 0 ? 9 : PJ_PRI.indexOf(x.priority);
+  // Finished campaigns fold away like Distant quests (remembered per device; open while searching or filtering for them).
+  let wonOpen = !!q || fs === "Done"; try { wonOpen = wonOpen || localStorage.getItem("homebox-won-open") === "1"; } catch {}
   el.innerHTML = PJ_STATUS.map((st) => {
     const g = list.filter((x) => (PJ_STATUS.includes(x.status) ? x.status : "Idea") === st)
       .sort((a, b) => st === "Done" ? (b.finished || "").localeCompare(a.finished || "") : rank(a) - rank(b) || (a.target || "9").localeCompare(b.target || "9"));
-    return g.length ? `<div class="group"><h3>${esc(tv(st, CAMPAIGN_STATUS[st] || st))} · ${g.length}</h3><div class="list">${g.map(row).join("")}</div></div>` : "";
+    if (!g.length) return "";
+    const h = `${esc(tv(st, CAMPAIGN_STATUS[st] || st))} · ${g.length}`, rows = `<div class="list">${g.map(row).join("")}</div>`;
+    return st === "Done" ? `<details class="group far-fold won-fold"${wonOpen ? " open" : ""}><summary><h3>${h} <span class="caret" aria-hidden="true">▸</span></h3></summary>${rows}</details>` : `<div class="group"><h3>${h}</h3>${rows}</div>`;
   }).join("");
 }
 
@@ -1458,7 +1462,8 @@ document.addEventListener("click", async (e) => {
     case "print-labels": return printLabels(id ? [id] : [...document.querySelectorAll("#items-list [data-act=open-item]")].map((x) => x.dataset.id));
     case "srv-use-local": return srvResolve("local");  }
 });
-document.addEventListener("toggle", (e) => { if (e.target.matches?.(".far-fold") && !$("uq").value.trim()) try { localStorage.setItem("homebox-far-open", e.target.open ? "1" : "0"); } catch {} }, true);
+document.addEventListener("toggle", (e) => { if (e.target.matches?.(".won-fold") && !$("jq").value.trim() && $("f-jstatus").value !== "Done") try { localStorage.setItem("homebox-won-open", e.target.open ? "1" : "0"); } catch {} }, true);
+document.addEventListener("toggle", (e) => { if (e.target.matches?.(".far-fold:not(.won-fold)") && !$("uq").value.trim()) try { localStorage.setItem("homebox-far-open", e.target.open ? "1" : "0"); } catch {} }, true);
 document.addEventListener("toggle", (e) => { const k = e.target.dataset?.k; if (!k || !e.target.matches(".done-fold")) return; S.doneOpen = S.doneOpen || new Set(); e.target.open ? S.doneOpen.add(k) : S.doneOpen.delete(k); }, true);
 document.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".row.clickable")) { e.preventDefault(); e.target.click(); }
