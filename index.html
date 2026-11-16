@@ -519,6 +519,9 @@ const pad = (n) => String(n).padStart(2, "0");
 const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const parse = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const today = () => fmt(new Date());
+// Bounty rounds roll over at 8 AM, not midnight (Red, 2026-11-16): before 8 AM still counts as the previous day.
+const BOUNTY_DAY_START_H = 8;
+const bountyToday = () => fmt(new Date(Date.now() - BOUNTY_DAY_START_H * 36e5));
 const daysUntil = (s) => Math.round((parse(s) - parse(today())) / 86400000);
 function addInterval(s, n, unit) {
   const d = parse(s); n = Number(n) || 0;
@@ -1331,7 +1334,7 @@ document.addEventListener("click", async (e) => {
     case "bounty-claim": {
       if (await alreadyClaimed(id)) return;
       const b = S.bounties.find((x) => x.id === id); if (!b) return;
-      const d = today(), h = myHero(), missed = bountyMissed(b); let gain = "";
+      const d = bountyToday(), h = myHero(), missed = bountyMissed(b); let gain = "";
       if (await write(async () => {
         await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h?.id || "", passed: false, history: [{ date: d, by: h?.id || "" }, ...(b.history || [])].slice(0, 60) });
         gain = await awardXp(starsOf(b) * XP.star + (missed ? XP.missed : 0), b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
@@ -1345,7 +1348,7 @@ document.addEventListener("click", async (e) => {
       const cost = passCost(b); if (heroTokens(h) < cost) return;
       if (!arm(el, `Spend ${cost} ${tokenWord(cost)}?`)) return;
       armed = null;
-      const d = today();
+      const d = bountyToday();
       await write(async () => {
         await S.db.doc("heroes/" + h.id).update({ spent: [...(h.spent || []), { id: newId(), date: d, boonId: pass.id, name: `${pass.name}: ${b.title}`, cost }] });
         await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h.id, passed: true, history: [{ date: d, by: h.id, passed: true }, ...(b.history || [])].slice(0, 60) });
@@ -2264,14 +2267,14 @@ async function seedBoons() { if (S.boons.length) return; for (const b of DEFAULT
 
 /* Bounties: chores that reset every day, week or month. */
 const BOUNTY_EVERY = { day: ["Daily", "Daily bounties"], week: ["Weekly", "Weekly bounties"], "2weeks": ["Every 2 weeks", "Biweekly bounties"], "5weeks": ["Every 5 weeks", "Bounties every 5 weeks"], month: ["Monthly", "Monthly bounties"], "2months": ["Every 2 months", "Bounties every 2 months"], quarter: ["Quarterly", "Quarterly bounties"], "6months": ["Every 6 months", "Bounties every 6 months"], year: ["Yearly", "Yearly bounties"], asneeded: ["As needed", "Bounties as needed"], once: ["One time", "One-time events"] };
-// Start of the current round. Weeks start Tuesday; biweekly rounds are counted from Tuesday, Jan 2 2024; 2-month rounds start Jan, Mar, May...
-function periodStart(every, d = today()) {
+// Start of the current round. Weeks start Monday 8 AM; biweekly rounds are counted from Monday, Jan 1 2024; 2-month rounds start Jan, Mar, May...
+function periodStart(every, d = bountyToday()) {
   if (every === "once") return "0000-01-01"; // one-time events: a single period, so once claimed they stay claimed
   const x = parse(d);
-  if (every === "week" || every === "2weeks" || every === "5weeks") x.setDate(x.getDate() - ((x.getDay() + 5) % 7)); // weeks reset on Tuesday (Red, 2026-11-16)
-  if (every === "2weeks" && Math.round((x - new Date(2024, 0, 2)) / 6048e5) % 2) x.setDate(x.getDate() - 7);
-  // 5-week blocks counted from Tuesday 2024-01-02, so every device agrees on when they reset.
-  if (every === "5weeks") x.setDate(x.getDate() - 7 * (((Math.round((x - new Date(2024, 0, 2)) / 6048e5) % 5) + 5) % 5));
+  if (every === "week" || every === "2weeks" || every === "5weeks") x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); // weeks reset Monday 8 AM (see bountyToday)
+  if (every === "2weeks" && Math.round((x - new Date(2024, 0, 1)) / 6048e5) % 2) x.setDate(x.getDate() - 7);
+  // 5-week blocks counted from Monday 2024-01-01, so every device agrees on when they reset.
+  if (every === "5weeks") x.setDate(x.getDate() - 7 * (((Math.round((x - new Date(2024, 0, 1)) / 6048e5) % 5) + 5) % 5));
   if (every === "month") x.setDate(1);
   if (every === "2months" || every === "quarter" || every === "6months") x.setMonth(x.getMonth() - (x.getMonth() % ({ "2months": 2, quarter: 3, "6months": 6 })[every]), 1);
   if (every === "year") x.setMonth(0, 1);
