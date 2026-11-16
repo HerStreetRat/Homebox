@@ -2169,7 +2169,7 @@ document.addEventListener("change", async (e) => {
 
 /* ---------- heroes, XP, boons and the Bounty Board ---------- */
 const HERO_KEY = "homebox-hero";
-const XP = { star: 10, overdue: 10, missed: 5, objective: 0, campaign: 50 }; // objectives give no XP (Red: the campaign total is enough)
+const XP = { star: 10, overdue: 10, missed: 5, objective: 0, campaign: 40 }; // objectives give no XP (Red: the campaign total is enough)
 // Difficulty: 1 to 3 stars, 10 XP per star. Older records: "big" tasks count as 3, a bounty's old XP number is rounded to stars.
 const starsOf = (x) => +x.stars === 0.5 ? 0.5 : Math.min(3, Math.max(1, +x.stars || (x.big ? 3 : x.xp ? Math.round(+x.xp / 10) : 1)));
 // A Pass scroll costs its shop price per star of the bounty or quest it skips.
