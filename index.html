@@ -1337,7 +1337,7 @@ document.addEventListener("click", async (e) => {
       const d = bountyToday(), h = myHero(), missed = bountyMissed(b); let gain = "";
       if (await write(async () => {
         await S.db.doc("bounties/" + id).update({ lastDone: d, doneBy: h?.id || "", passed: false, history: [{ date: d, by: h?.id || "" }, ...(b.history || [])].slice(0, 60) });
-        gain = await awardXp(starsOf(b) * XP.star + (missed ? XP.missed : 0), b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
+        gain = await awardXp(starsOf(b) * XP.star + (missed ? missedBonus(b) : 0), b.title, `bounty:${id}:${periodStart(b.every || "week", d)}`);
         gain += await useBountySpares(id, d, -1);
       })) toast((h ? tv("Done", "Bounty claimed!") : tv("Done. Pick who you are on the XP tab to earn XP.", "Claimed! Choose your hero in the Guild Hall to earn XP.")) + gain);
       return;
@@ -2304,6 +2304,8 @@ function bountyListForm() {
 const bountyPaused = (b) => !!b.pausedUntil && b.pausedUntil > today();
 const bountyDone = (b) => !!b.lastDone && b.lastDone >= periodStart(b.every || "week");
 // Missed: the last round ended without a claim (not for "as needed", paused, or bounties added this round). Worth +5 once, however many rounds were missed.
+// Missed bounties pay a small bonus, except half-star ones (Red, 2026-11-20): they still show "Missed".
+const missedBonus = (b) => starsOf(b) < 1 ? 0 : XP.missed;
 function bountyMissed(b) {
   const e = b.every || "week"; if (e === "asneeded" || e === "once" || bountyPaused(b) || bountyDone(b)) return false;
   const cur = periodStart(e), y = parse(cur); y.setDate(y.getDate() - 1); const prev = periodStart(e, fmt(y));
@@ -2345,7 +2347,7 @@ function renderBounties(ready) {
     return `<div class="row ${done ? "ok" : ""}">
       <span class="stripe"></span>
       <div class="main"><div class="title">${esc(b.title)}</div>
-        <div class="meta">${done ? `<span>${b.passed ? tv("Skipped with a pass", "Skipped with a Pass scroll") : tv("Done", "Claimed")}${by ? " by " + esc(by) : ""} · ${esc(nice(b.lastDone))}</span>` : `<span>${BOUNTY_EVERY[b.every || "week"][0]}</span>${bountyMissed(b) ? `<span class="txt-soon" title="Missed last round: +${XP.missed} XP">Missed · +${XP.missed}</span>` : ""}`}<span title="${starsOf(b) * XP.star} XP">${starText(starsOf(b))}</span>${b.notes ? `<span>${esc(b.notes)}</span>` : ""}</div></div>
+        <div class="meta">${done ? `<span>${b.passed ? tv("Skipped with a pass", "Skipped with a Pass scroll") : tv("Done", "Claimed")}${by ? " by " + esc(by) : ""} · ${esc(nice(b.lastDone))}</span>` : `<span>${BOUNTY_EVERY[b.every || "week"][0]}</span>${bountyMissed(b) ? `<span class="txt-soon" title="Missed last round${missedBonus(b) ? `: +${missedBonus(b)} XP` : ""}">Missed${missedBonus(b) ? ` · +${missedBonus(b)}` : ""}</span>` : ""}`}<span title="${starsOf(b) * XP.star} XP">${starText(starsOf(b))}</span>${b.notes ? `<span>${esc(b.notes)}</span>` : ""}</div></div>
       <div class="side">${done ? `<button class="btn small" data-act="bounty-undo" data-id="${b.id}">Undo</button>` : `<button class="btn small primary" data-act="bounty-claim" data-id="${b.id}">${tv("Done", "Claim bounty")}</button>${canPass ? `<button class="btn small" data-act="bounty-pass" data-id="${b.id}" title="Spend ${pc} ${tokenWord(pc)}">${tv("Use a pass", "Use Pass scroll")} (${pc})</button>` : ""}`}<button class="btn small" data-act="edit-bounty" data-id="${b.id}">Edit</button></div>
     </div>`;
   };
